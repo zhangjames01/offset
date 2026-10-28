@@ -1,0 +1,13 @@
+{
+  "classificationId": "cls_mock_01",
+  "category": "air_travel",
+  "confidence": 0.94,
+  "causeId": "carbon_removal",
+  "causeName": "Carbon removal (placeholder partner)",
+  "suggestedDonationCents": 747,
+  "donationCents": 500,
+  "rateRule": "3% of fare",
+  "reason": "Air travel is carbon-intensive, so this routes to carbon removal.",
+  "adjustment": "per_order_max",
+  "source": "llm"
+}

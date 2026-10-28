@@ -1,0 +1,13 @@
+{
+  "classificationId": "cls_mock_04",
+  "category": "single_use_packaging",
+  "confidence": 0.87,
+  "causeId": "ocean_plastic",
+  "causeName": "Ocean plastic cleanup (placeholder partner)",
+  "suggestedDonationCents": 28,
+  "donationCents": 0,
+  "rateRule": "1% of item price",
+  "reason": "Individually wrapped snacks create single-use packaging waste. You opted out of this category.",
+  "adjustment": "opted_out",
+  "source": "llm"
+}

@@ -1,0 +1,137 @@
+{
+  "_note": "Labeled carts for classifier evals (A5). Starter set: one per demo product. Grow to ~30 incl. edge cases. `expected` is the label; `request` is a valid ClassifyRequest.",
+  "carts": [
+    {
+      "id": "fixture_01",
+      "expected": {
+        "category": "air_travel",
+        "lowConfidence": false
+      },
+      "request": {
+        "cartId": "cart_fx_01",
+        "currency": "USD",
+        "userId": "demo-user",
+        "subtotalCents": 24900,
+        "items": [
+          {
+            "productId": "flight-jfk-lax",
+            "name": "JFK → LAX economy",
+            "description": "One-way economy flight, New York to Los Angeles",
+            "unitPriceCents": 24900,
+            "quantity": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fixture_02",
+      "expected": {
+        "category": "fast_fashion",
+        "lowConfidence": false
+      },
+      "request": {
+        "cartId": "cart_fx_02",
+        "currency": "USD",
+        "userId": "demo-user",
+        "subtotalCents": 2499,
+        "items": [
+          {
+            "productId": "tee-3pack",
+            "name": "Graphic tee 3-pack",
+            "description": "Three trend-print cotton-blend tees from a fast-fashion brand",
+            "unitPriceCents": 2499,
+            "quantity": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fixture_03",
+      "expected": {
+        "category": "food_delivery",
+        "lowConfidence": false
+      },
+      "request": {
+        "cartId": "cart_fx_03",
+        "currency": "USD",
+        "userId": "demo-user",
+        "subtotalCents": 3250,
+        "items": [
+          {
+            "productId": "ramen-delivery",
+            "name": "Ramen delivery",
+            "description": "Two bowls of tonkotsu ramen delivered by courier",
+            "unitPriceCents": 3250,
+            "quantity": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fixture_04",
+      "expected": {
+        "category": "single_use_packaging",
+        "lowConfidence": false
+      },
+      "request": {
+        "cartId": "cart_fx_04",
+        "currency": "USD",
+        "userId": "demo-user",
+        "subtotalCents": 2799,
+        "items": [
+          {
+            "productId": "snack-box",
+            "name": "Snack variety box",
+            "description": "40 individually wrapped single-serve snack packs",
+            "unitPriceCents": 2799,
+            "quantity": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fixture_05",
+      "expected": {
+        "category": "general",
+        "lowConfidence": false
+      },
+      "request": {
+        "cartId": "cart_fx_05",
+        "currency": "USD",
+        "userId": "demo-user",
+        "subtotalCents": 1425,
+        "items": [
+          {
+            "productId": "paperback-novel",
+            "name": "Paperback novel",
+            "description": "A bestselling mystery novel, paperback edition",
+            "unitPriceCents": 1425,
+            "quantity": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fixture_06",
+      "expected": {
+        "category": "general",
+        "lowConfidence": true
+      },
+      "request": {
+        "cartId": "cart_fx_06",
+        "currency": "USD",
+        "userId": "demo-user",
+        "subtotalCents": 5000,
+        "items": [
+          {
+            "productId": "gift-card-50",
+            "name": "$50 gift card",
+            "description": "Digital gift card redeemable at many stores",
+            "unitPriceCents": 5000,
+            "quantity": 1
+          }
+        ]
+      }
+    }
+  ]
+}

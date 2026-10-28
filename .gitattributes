@@ -1,0 +1,5 @@
+# Normalize line endings so Windows and Mac/Linux commits produce clean diffs.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

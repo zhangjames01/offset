@@ -1,0 +1,47 @@
+[
+  {
+    "id": "carbon_removal",
+    "name": "Carbon removal (placeholder partner)",
+    "categories": [
+      "air_travel"
+    ],
+    "receiver": "",
+    "impactNote": "PLACEHOLDER — no impact figure until sourced"
+  },
+  {
+    "id": "textile_recycling",
+    "name": "Textile recycling (placeholder partner)",
+    "categories": [
+      "fast_fashion"
+    ],
+    "receiver": "",
+    "impactNote": "PLACEHOLDER — no impact figure until sourced"
+  },
+  {
+    "id": "food_bank",
+    "name": "Food bank (placeholder partner)",
+    "categories": [
+      "food_delivery"
+    ],
+    "receiver": "",
+    "impactNote": "PLACEHOLDER — no impact figure until sourced"
+  },
+  {
+    "id": "ocean_plastic",
+    "name": "Ocean plastic cleanup (placeholder partner)",
+    "categories": [
+      "single_use_packaging"
+    ],
+    "receiver": "",
+    "impactNote": "PLACEHOLDER — no impact figure until sourced"
+  },
+  {
+    "id": "general_fund",
+    "name": "General giving fund (placeholder partner)",
+    "categories": [
+      "general"
+    ],
+    "receiver": "",
+    "impactNote": "PLACEHOLDER — no impact figure until sourced"
+  }
+]

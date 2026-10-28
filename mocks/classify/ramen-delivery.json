@@ -1,0 +1,13 @@
+{
+  "classificationId": "cls_mock_03",
+  "category": "food_delivery",
+  "confidence": 0.89,
+  "causeId": "food_bank",
+  "causeName": "Food bank (placeholder partner)",
+  "suggestedDonationCents": 100,
+  "donationCents": 100,
+  "rateRule": "flat $1.00",
+  "reason": "A courier-delivered meal is food delivery, so this routes to a food bank.",
+  "adjustment": null,
+  "source": "llm"
+}

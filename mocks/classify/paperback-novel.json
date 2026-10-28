@@ -1,0 +1,13 @@
+{
+  "classificationId": "cls_mock_05",
+  "category": "general",
+  "confidence": 0.82,
+  "causeId": "general_fund",
+  "causeName": "General giving fund (placeholder partner)",
+  "suggestedDonationCents": 75,
+  "donationCents": 75,
+  "rateRule": "round up to next dollar",
+  "reason": "A book has no specific footprint category, so this rounds up to the general fund.",
+  "adjustment": null,
+  "source": "llm"
+}

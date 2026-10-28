@@ -1,0 +1,14 @@
+{
+  "userId": "demo-user",
+  "rawText": "I care about climate and hunger. Max $15 a month, skip packaging.",
+  "causes": [
+    "carbon_removal",
+    "food_bank"
+  ],
+  "optOutCategories": [
+    "single_use_packaging"
+  ],
+  "monthlyCapCents": 1500,
+  "perOrderMaxCents": 500,
+  "updatedAt": "2026-10-28T18:00:00Z"
+}

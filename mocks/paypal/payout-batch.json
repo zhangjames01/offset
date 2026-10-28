@@ -1,0 +1,19 @@
+{
+  "id": "pb_01",
+  "mode": "sandbox",
+  "senderBatchId": "offset-2026-11-08-001",
+  "thresholdCents": 500,
+  "items": [
+    {
+      "causeId": "carbon_removal",
+      "receiver": "carbon-partner@sandbox.example",
+      "amountCents": 500,
+      "ledgerEntryIds": [
+        "led_01"
+      ]
+    }
+  ],
+  "paypalPayoutBatchId": "5UXD2E8A7EBQJ",
+  "status": "PENDING",
+  "createdAt": "2026-11-08T21:00:00Z"
+}

@@ -1,0 +1,14 @@
+// Placeholder schema from A1. Jay owns the real models in J2:
+// User, Preferences, Order, LedgerEntry, PayoutBatch, Cause.
+// Shapes must match contracts/ (money = integer cents).
+// Prisma 7 needs a driver adapter: npm i @prisma/adapter-pg, then
+// new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) })
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}

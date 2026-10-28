@@ -1,0 +1,81 @@
+{
+  "entries": [
+    {
+      "id": "led_03",
+      "userId": "demo-user",
+      "localOrderId": "ord_03",
+      "paypalOrderId": "MOCK3ORDER0000003",
+      "paypalCaptureId": "MOCK3CAPTURE00003",
+      "category": "fast_fashion",
+      "causeId": "textile_recycling",
+      "amountCents": 50,
+      "userAction": "accepted",
+      "classificationSource": "llm",
+      "status": "pending_payout",
+      "payoutBatchId": null,
+      "createdAt": "2026-11-01T20:40:00Z"
+    },
+    {
+      "id": "led_02",
+      "userId": "demo-user",
+      "localOrderId": "ord_02",
+      "paypalOrderId": "MOCK2ORDER0000002",
+      "paypalCaptureId": "MOCK2CAPTURE00002",
+      "category": "food_delivery",
+      "causeId": "food_bank",
+      "amountCents": 100,
+      "userAction": "accepted",
+      "classificationSource": "rules",
+      "status": "pending_payout",
+      "payoutBatchId": null,
+      "createdAt": "2026-11-01T20:30:00Z"
+    },
+    {
+      "id": "led_01",
+      "userId": "demo-user",
+      "localOrderId": "ord_01",
+      "paypalOrderId": "5O190127TN364715T",
+      "paypalCaptureId": "3C679366HH908993F",
+      "category": "air_travel",
+      "causeId": "carbon_removal",
+      "amountCents": 500,
+      "userAction": "accepted",
+      "classificationSource": "llm",
+      "status": "pending_payout",
+      "payoutBatchId": null,
+      "createdAt": "2026-11-01T20:15:00Z"
+    }
+  ],
+  "balances": [
+    {
+      "causeId": "carbon_removal",
+      "pendingCents": 500,
+      "paidOutCents": 0,
+      "thresholdCents": 500
+    },
+    {
+      "causeId": "textile_recycling",
+      "pendingCents": 50,
+      "paidOutCents": 0,
+      "thresholdCents": 500
+    },
+    {
+      "causeId": "food_bank",
+      "pendingCents": 100,
+      "paidOutCents": 0,
+      "thresholdCents": 500
+    },
+    {
+      "causeId": "ocean_plastic",
+      "pendingCents": 0,
+      "paidOutCents": 0,
+      "thresholdCents": 500
+    },
+    {
+      "causeId": "general_fund",
+      "pendingCents": 0,
+      "paidOutCents": 0,
+      "thresholdCents": 500
+    }
+  ]
+}

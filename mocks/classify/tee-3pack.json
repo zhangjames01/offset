@@ -1,0 +1,13 @@
+{
+  "classificationId": "cls_mock_02",
+  "category": "fast_fashion",
+  "confidence": 0.91,
+  "causeId": "textile_recycling",
+  "causeName": "Textile recycling (placeholder partner)",
+  "suggestedDonationCents": 50,
+  "donationCents": 50,
+  "rateRule": "2% of item price",
+  "reason": "Low-cost trend clothing is fast fashion, so this routes to textile recycling.",
+  "adjustment": null,
+  "source": "llm"
+}

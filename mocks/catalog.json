@@ -1,0 +1,46 @@
+{
+  "products": [
+    {
+      "id": "flight-jfk-lax",
+      "name": "JFK → LAX economy",
+      "description": "One-way economy flight, New York to Los Angeles",
+      "priceCents": 24900,
+      "expectedCategory": "air_travel"
+    },
+    {
+      "id": "tee-3pack",
+      "name": "Graphic tee 3-pack",
+      "description": "Three trend-print cotton-blend tees from a fast-fashion brand",
+      "priceCents": 2499,
+      "expectedCategory": "fast_fashion"
+    },
+    {
+      "id": "ramen-delivery",
+      "name": "Ramen delivery",
+      "description": "Two bowls of tonkotsu ramen delivered by courier",
+      "priceCents": 3250,
+      "expectedCategory": "food_delivery"
+    },
+    {
+      "id": "snack-box",
+      "name": "Snack variety box",
+      "description": "40 individually wrapped single-serve snack packs",
+      "priceCents": 2799,
+      "expectedCategory": "single_use_packaging"
+    },
+    {
+      "id": "paperback-novel",
+      "name": "Paperback novel",
+      "description": "A bestselling mystery novel, paperback edition",
+      "priceCents": 1425,
+      "expectedCategory": "general"
+    },
+    {
+      "id": "gift-card-50",
+      "name": "$50 gift card",
+      "description": "Digital gift card redeemable at many stores",
+      "priceCents": 5000,
+      "expectedCategory": "general"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "classificationId": "cls_mock_06",
+  "category": "general",
+  "confidence": 0.41,
+  "causeId": "general_fund",
+  "causeName": "General giving fund (placeholder partner)",
+  "suggestedDonationCents": 100,
+  "donationCents": 100,
+  "rateRule": "flat $1.00 (low confidence)",
+  "reason": "A gift card could be spent on anything, so this uses a small general donation.",
+  "adjustment": "low_confidence",
+  "source": "llm"
+}
