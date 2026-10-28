@@ -1,0 +1,4 @@
+# Contract and mock changes need review. Per the build plan, contracts/ changes
+# need 2 approvals — add Jay's and Hua's GitHub usernames here.
+/contracts/  @zhangjames01
+/mocks/      @zhangjames01
