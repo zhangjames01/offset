@@ -12,3 +12,110 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model User {
+  id          String        @id
+  preferences Preferences?
+  orders      Order[]
+  ledger      LedgerEntry[]
+}
+
+model Preferences {
+  userId            String   @id
+  user              User     @relation(fields: [userId], references: [id])
+  rawText           String   @default("")
+  causes            String[]
+  optOutCategories  String[]
+  monthlyCapCents   Int
+  perOrderMaxCents  Int
+  updatedAt         DateTime @updatedAt
+}
+
+model Product {
+  id               String @id
+  name             String
+  description      String
+  priceCents       Int
+  imageUrl         String?
+  expectedCategory String?
+}
+
+model Cause {
+  id         String        @id
+  name       String
+  categories String[]
+  receiver   String        @default("")
+  impactNote String
+  ledger     LedgerEntry[]
+  orders     Order[]
+  payoutItems PayoutBatchItem[]
+}
+
+model Order {
+  id                   String       @id @default(cuid())
+  userId               String
+  user                 User         @relation(fields: [userId], references: [id])
+  cartId               String
+  paypalOrderId        String       @unique
+  paypalCaptureId      String?      @unique
+  status               String       @default("CREATED")
+  purchaseCents        Int
+  donationCents        Int
+  causeId              String?
+  cause                Cause?       @relation(fields: [causeId], references: [id])
+  category             String?
+  userAction           String?
+  classificationSource String?
+  classificationId     String?
+  items                Json
+  ledgerEntry          LedgerEntry?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+}
+
+model LedgerEntry {
+  id                   String           @id @default(cuid())
+  userId               String
+  user                 User             @relation(fields: [userId], references: [id])
+  localOrderId         String           @unique
+  order                Order            @relation(fields: [localOrderId], references: [id])
+  paypalOrderId        String           @unique
+  paypalCaptureId      String           @unique
+  category             String
+  causeId              String
+  cause                Cause            @relation(fields: [causeId], references: [id])
+  amountCents          Int
+  userAction           String
+  classificationSource String
+  status               String           @default("pending_payout")
+  payoutBatchId        String?
+  payoutBatch          PayoutBatch?     @relation(fields: [payoutBatchId], references: [id])
+  createdAt            DateTime         @default(now())
+
+  @@index([causeId, status])
+  @@index([userId, createdAt])
+}
+
+model PayoutBatch {
+  id                  String            @id @default(cuid())
+  mode                String
+  senderBatchId       String            @unique
+  thresholdCents      Int
+  paypalPayoutBatchId String?           @unique
+  status              String
+  items               PayoutBatchItem[]
+  ledgerEntries       LedgerEntry[]
+  createdAt           DateTime          @default(now())
+}
+
+model PayoutBatchItem {
+  id             String      @id @default(cuid())
+  payoutBatchId  String
+  payoutBatch    PayoutBatch @relation(fields: [payoutBatchId], references: [id])
+  causeId        String
+  cause          Cause       @relation(fields: [causeId], references: [id])
+  receiver       String
+  amountCents    Int
+
+  @@unique([payoutBatchId, causeId])
+}
