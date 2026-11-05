@@ -24,7 +24,7 @@ async function main() {
       await prisma.product.upsert({ where: { id: p.id }, create: p, update: p });
     }
     for (const c of verifiedCauses) {
-      const receiver = process.env[`CAUSE_RECEIVER_${c.id.toUpperCase()}`] ?? c.receiver;
+      const receiver = process.env[`CAUSE_RECEIVER_${c.id.toUpperCase()}`] || c.receiver;
       const data = { ...c, receiver };
       await prisma.cause.upsert({ where: { id: c.id }, create: data, update: data });
     }
