@@ -86,7 +86,7 @@ function toLlmError(err: unknown): LlmError {
   }
   if (err instanceof Anthropic.APIError) {
     // Keep Anthropic's own message (e.g. "invalid x-api-key"); it never contains the key.
-    const detail = (err.error as { error?: { message?: string } } | undefined)?.error?.message;
+    const detail = (err.error as { error?: { message?: string } } | undefined)?.error?.message ?? err.message;
     return new LlmError("api_error", `LLM API error ${err.status ?? ""}${detail ? `: ${detail}` : ""}`.trim());
   }
   return new LlmError("api_error", err instanceof Error ? err.message : "Unknown LLM error");

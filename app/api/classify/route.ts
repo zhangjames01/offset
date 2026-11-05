@@ -15,7 +15,13 @@ export const POST = handle(async (req: Request) => {
     } catch (err) {
       // A3 replaces this with the rules fallback (invalid_output / timeout / rate_limited).
       if (err instanceof LlmError) {
-        throw new ApiFailure("CLASSIFY_FAILED", err.message, err.kind === "not_configured" ? 503 : 502);
+        // Details stay in the server log; the client gets a generic message.
+        console.error(`[classify] ${err.kind}: ${err.message}`);
+        throw new ApiFailure(
+          "CLASSIFY_FAILED",
+          "Unable to classify your purchase right now.",
+          err.kind === "not_configured" ? 503 : 502,
+        );
       }
       throw err;
     }

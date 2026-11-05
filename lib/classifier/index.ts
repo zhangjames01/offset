@@ -1,11 +1,11 @@
 /**
  * classify(): cart → ClassifyResponse (A2). The LLM picks the category; pricing.ts
- * computes every cent. Preferences and month-to-date giving come from ClassifyStore,
- * which reads the mock store today and Jay's Prisma tables once J2 lands.
+ * computes every cent. Catalog prices, preferences and month-to-date giving come from
+ * ClassifyStore, which reads the mock store today and Jay's Prisma tables once J2 lands.
  * A3 adds the rules fallback + cache around this function.
  */
 import { ClassifyResponse, type ClassifyRequest, type Preferences } from "@/contracts";
-import { mockCauses } from "@/lib/mocks";
+import { mockCatalog, mockCauses } from "@/lib/mocks";
 import { nextId, store } from "@/lib/mock-store";
 import { anthropicClassifier, type LlmClassifier } from "./llm";
 import { price } from "./pricing";
@@ -13,6 +13,8 @@ import { price } from "./pricing";
 export { LlmError, type LlmErrorKind } from "./llm";
 
 export type ClassifyStore = {
+  /** Authoritative unit price for a catalog product; undefined if the product is unknown. */
+  getUnitPriceCents(productId: string): Promise<number | undefined>;
   getPreferences(userId: string): Promise<Preferences>;
   /** Sum of the user's ledger entries in the current UTC calendar month. */
   getMonthToDateCents(userId: string, now: Date): Promise<number>;
@@ -24,14 +26,20 @@ export type ClassifyDeps = { llm: LlmClassifier; store: ClassifyStore; now?: () 
 
 export async function classify(cart: ClassifyRequest, deps: ClassifyDeps): Promise<ClassifyResponse> {
   const now = deps.now?.() ?? new Date();
+  // Never trust client prices: known products are re-priced from the catalog before the
+  // LLM sees the cart or any cent is computed. Unknown products keep the client price
+  // (create-order rejects them, and eval carts use made-up products).
+  const catalogPrices = await Promise.all(cart.items.map((i) => deps.store.getUnitPriceCents(i.productId)));
+  const items = cart.items.map((i, n) => ({ ...i, unitPriceCents: catalogPrices[n] ?? i.unitPriceCents }));
+  const subtotalCents = items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
+  const trusted: ClassifyRequest = { ...cart, items, subtotalCents };
+
   const [llm, prefs, monthToDateCents] = await Promise.all([
-    deps.llm(cart),
+    deps.llm(trusted),
     deps.store.getPreferences(cart.userId),
     deps.store.getMonthToDateCents(cart.userId, now),
   ]);
 
-  // Price from the line items, not the client's subtotal. create-order re-prices from the catalog.
-  const subtotalCents = cart.items.reduce((s, i) => s + i.unitPriceCents * i.quantity, 0);
   const priced = price({ category: llm.category, confidence: llm.confidence, subtotalCents, prefs, monthToDateCents });
 
   const result = ClassifyResponse.parse({
@@ -46,8 +54,11 @@ export async function classify(cart: ClassifyRequest, deps: ClassifyDeps): Promi
   return result;
 }
 
+const catalogPrice = new Map(mockCatalog.products.map((p) => [p.id, p.priceCents]));
+
 /** Mock-store implementation (in-memory, demo-user only). */
 export const mockClassifyStore: ClassifyStore = {
+  getUnitPriceCents: async (productId) => catalogPrice.get(productId),
   getPreferences: async () => store().preferences,
   getMonthToDateCents: async (userId, now) => {
     const month = now.toISOString().slice(0, 7); // "2026-11"

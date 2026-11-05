@@ -40,10 +40,28 @@ describe("classify()", () => {
     },
   );
 
-  test("prices from line items, not the client-sent subtotal", async () => {
-    const tampered = { ...flightCart, subtotalCents: 1 };
-    const got = await classify(tampered, { llm: mockLikeLlm, store: mockClassifyStore, now: NOV });
-    expect(got.suggestedDonationCents).toBe(747);
+  test("ignores client-sent prices and subtotal for catalog products", async () => {
+    const seen: ClassifyRequest[] = [];
+    const spy = async (c: ClassifyRequest) => (seen.push(c), mockLikeLlm(c));
+    const tampered = {
+      ...flightCart,
+      subtotalCents: 1,
+      items: [{ ...flightCart.items[0], unitPriceCents: 999_999 }],
+    };
+    const got = await classify(tampered, { llm: spy, store: mockClassifyStore, now: NOV });
+    expect(got.suggestedDonationCents).toBe(747); // 3% of the catalog's 24900
+    expect(seen[0].items[0].unitPriceCents).toBe(24900); // the LLM sees trusted prices too
+    expect(seen[0].subtotalCents).toBe(24900);
+  });
+
+  test("unknown products keep the client price (checkout rejects them anyway)", async () => {
+    const odd = {
+      ...flightCart,
+      items: [{ ...flightCart.items[0], productId: "not-in-catalog", unitPriceCents: 10_000 }],
+    };
+    const llm = async () => ({ category: "air_travel" as const, confidence: 0.9, reason: "A flight." });
+    const got = await classify(odd, { llm, store: mockClassifyStore, now: NOV });
+    expect(got.suggestedDonationCents).toBe(300);
   });
 
   test("month-to-date only counts the current UTC month", async () => {
@@ -73,13 +91,17 @@ describe("POST /api/classify, LLM_MODE=live", () => {
     ["timeout", 502],
     ["rate_limited", 502],
     ["not_configured", 503],
-  ] as const)("LlmError %s → CLASSIFY_FAILED %i (until A3 adds the fallback)", async (kind, status) => {
+  ] as const)("LlmError %s → CLASSIFY_FAILED %i, details logged not returned", async (kind, status) => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     fakeLlm = async () => {
-      throw new LlmError(kind, kind);
+      throw new LlmError(kind, "secret detail: invalid x-api-key");
     };
     const res = await post(flightCart);
     expect(res.status).toBe(status);
-    expect(ApiError.parse(await res.json()).error.code).toBe("CLASSIFY_FAILED");
+    const { error } = ApiError.parse(await res.json());
+    expect(error).toEqual({ code: "CLASSIFY_FAILED", message: "Unable to classify your purchase right now." });
+    expect(log).toHaveBeenCalledWith(`[classify] ${kind}: secret detail: invalid x-api-key`);
+    log.mockRestore();
   });
 
   test("bad body is still VALIDATION_ERROR", async () => {
