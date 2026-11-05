@@ -69,6 +69,13 @@ describe("anthropicClassifier()", () => {
     expect(await run(new Anthropic.InternalServerError(500, undefined, "boom", new Headers()))).toBe("api_error");
   });
 
+  test("keeps Anthropic's error text in the message", async () => {
+    const body = { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } };
+    const err = new Anthropic.AuthenticationError(401, body, "401", new Headers());
+    const p = anthropicClassifier({ client: fakeClient(err).client })(cart);
+    await expect(p).rejects.toThrow("LLM API error 401: invalid x-api-key");
+  });
+
   test("invalid model output surfaces as invalid_output", async () => {
     const { client } = fakeClient('{"category":"general","confidence":2,"reason":"x"}');
     expect(await kindOf(anthropicClassifier({ client })(cart))).toBe("invalid_output");

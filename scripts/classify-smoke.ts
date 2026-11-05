@@ -8,13 +8,18 @@ import { LlmError, classify, mockClassifyStore } from "@/lib/classifier";
 import { DEFAULT_MODEL, anthropicClassifier } from "@/lib/classifier/llm";
 import cartsJson from "@/tests/fixtures/carts.json";
 
+let envFileFound = true;
 try {
   process.loadEnvFile(".env.local");
 } catch {
-  // fall through to the env check
+  envFileFound = false;
 }
 if (!process.env.LLM_API_KEY) {
-  console.error("Set LLM_API_KEY in .env.local first.");
+  console.error(
+    envFileFound
+      ? "LLM_API_KEY is empty in .env.local. Put the full key on its own line: LLM_API_KEY=sk-ant-api03-…"
+      : `No .env.local found in ${process.cwd()}. Run: Copy-Item .env.example .env.local, then set LLM_API_KEY.`,
+  );
   process.exit(1);
 }
 
