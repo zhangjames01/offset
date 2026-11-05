@@ -12,9 +12,11 @@
     "test:watch": "vitest",
     "ci": "npm run lint && npm run typecheck && npm test && npm run build",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "classify:smoke": "tsx scripts/classify-smoke.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.5.0",
     "@prisma/client": "^7.10.1",
     "geist": "^1.8.2",
     "next": "16.4.3",
@@ -31,6 +33,7 @@
     "eslint-config-next": "16.4.3",
     "prisma": "^7.10.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.5"
   },
