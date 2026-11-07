@@ -1,16 +1,17 @@
 "use client";
 
-import { createContext, useContext, useEffect, useReducer, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useReducer, type ReactNode } from "react";
 import { cartReducer, emptyCart, type Cart, type CartAction } from "@/lib/cart";
 
 const STORAGE_KEY = "offset.cart.v1";
+// Placeholder id until localStorage has been read. Never saved.
+const PENDING_ID = "cart_pending";
 
 type CartContextValue = { cart: Cart; dispatch: (action: CartAction) => void };
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [cart, dispatch] = useReducer(cartReducer, undefined, () => emptyCart("cart_pending"));
-  const loaded = useRef(false);
+  const [cart, dispatch] = useReducer(cartReducer, undefined, () => emptyCart(PENDING_ID));
 
   // Restore after mount (localStorage isn't available during SSR).
   useEffect(() => {
@@ -21,12 +22,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } catch {
       // Storage blocked or corrupt: start empty.
     }
-    dispatch({ type: "load", cart: restored?.lines ? restored : emptyCart() });
-    loaded.current = true;
+    dispatch({ type: "load", cart: restored?.lines && restored.id !== PENDING_ID ? restored : emptyCart() });
   }, []);
 
   useEffect(() => {
-    if (!loaded.current) return;
+    // Skip until the restore has landed, so the empty placeholder never overwrites a saved cart
+    // (React Strict Mode runs these effects twice in dev).
+    if (cart.id === PENDING_ID) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
     } catch {
