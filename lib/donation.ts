@@ -18,11 +18,11 @@ export function maxEditCents(c: ClassifyResponse, perOrderMaxCents: number | nul
   return Math.max(c.donationCents, c.suggestedDonationCents);
 }
 
-/** "2.50" / "$2.5" / "3" → cents. null if not a valid non-negative amount with at most 2 decimals. */
+/** "2.50" / "$2.5" / "3" / ".50" → cents. null if not a valid non-negative amount with at most 2 decimals. */
 export function parseDollars(text: string): number | null {
-  const m = text.trim().replace(/^\$/, "").match(/^(\d+)(?:\.(\d{0,2}))?$/);
-  if (!m) return null;
-  return Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0"));
+  const m = text.trim().replace(/^\$/, "").match(/^(\d*)(?:\.(\d{0,2}))?$/);
+  if (!m || (!m[1] && !m[2])) return null; // needs at least one digit
+  return Number(m[1] || 0) * 100 + Number((m[2] ?? "").padEnd(2, "0"));
 }
 
 /** Validates an edit. Editing back to the suggested amount counts as accepting it. */

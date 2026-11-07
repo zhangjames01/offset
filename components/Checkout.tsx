@@ -28,8 +28,9 @@ export function Checkout() {
   const [result, setResult] = useState<Result | null>(null);
   const [retry, setRetry] = useState(0);
   const [perOrderMax, setPerOrderMax] = useState<number | null>(null);
-  // Keyed by classificationId so a re-classified cart starts back at the suggestion.
-  const [decision, setDecision] = useState<{ id: string; d: Decision } | null>(null);
+  // Keyed by the classify request (the whole cart), so any cart change resets to the suggestion.
+  // Not by classificationId: mock ids are fixed per product and cache hits can reuse ids.
+  const [decision, setDecision] = useState<{ key: string; d: Decision } | null>(null);
 
   useEffect(() => {
     if (!ready || !request) return;
@@ -71,7 +72,7 @@ export function Checkout() {
   const current = result?.key === key ? result : null;
   const classification = current?.ok ? current.data : null;
   const d =
-    classification && decision?.id === classification.classificationId
+    classification && decision?.key === key
       ? decision.d
       : classification
         ? defaultDecision(classification)
@@ -97,23 +98,26 @@ export function Checkout() {
             </ul>
           </section>
 
-          {!current && <p className="text-sm text-zinc-500">Finding a matching cause…</p>}
-          {current && !current.ok && (
-            <div className="rounded-lg border border-red-200 p-4 text-sm dark:border-red-900">
-              <p className="text-red-600">Couldn&apos;t suggest a donation: {current.message}</p>
-              <button type="button" onClick={() => setRetry((n) => n + 1)} className="mt-2 underline">
-                Try again
-              </button>
-            </div>
-          )}
-          {classification && d && (
-            <DonationCard
-              classification={classification}
-              decision={d}
-              maxCents={maxEditCents(classification, perOrderMax)}
-              onChange={(next) => setDecision({ id: classification.classificationId, d: next })}
-            />
-          )}
+          <div aria-live="polite" className="space-y-6">
+            {!current && <p className="text-sm text-zinc-500">Finding a matching cause…</p>}
+            {current && !current.ok && (
+              <div className="rounded-lg border border-red-200 p-4 text-sm dark:border-red-900">
+                <p className="text-red-600">Couldn&apos;t suggest a donation: {current.message}</p>
+                <button type="button" onClick={() => setRetry((n) => n + 1)} className="mt-2 underline">
+                  Try again
+                </button>
+              </div>
+            )}
+            {classification && d && (
+              <DonationCard
+                key={key}
+                classification={classification}
+                decision={d}
+                maxCents={maxEditCents(classification, perOrderMax)}
+                onChange={(next) => setDecision({ key, d: next })}
+              />
+            )}
+          </div>
         </div>
 
         <aside className="h-fit rounded-lg border border-zinc-200 p-4 text-sm lg:sticky lg:top-8 dark:border-zinc-800">

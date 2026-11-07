@@ -19,7 +19,8 @@ describe("donation card logic", () => {
     expect(parseDollars("2.5")).toBe(250);
     expect(parseDollars("$3")).toBe(300);
     expect(parseDollars("0.07")).toBe(7);
-    for (const bad of ["", "-1", "1.234", "abc", "1e3"]) expect(parseDollars(bad)).toBeNull();
+    expect(parseDollars(".50")).toBe(50);
+    for (const bad of ["", ".", "$", "-1", "1.234", "abc", "1e3"]) expect(parseDollars(bad)).toBeNull();
   });
 
   it("bounds edits and classifies the user action", () => {
