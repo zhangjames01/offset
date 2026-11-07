@@ -2,26 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ApiError, ClassifyResponse } from "@/contracts";
+import { ClassifyResponse } from "@/contracts";
 import { formatCents, subtotalCents, toClassifyRequest } from "@/lib/cart";
-import { defaultDecision, donationCents, maxEditCents, type Decision } from "@/lib/donation";
+import { postJson } from "@/lib/checkout-api";
+import { defaultDecision, donationCents, maxEditCents, toCreateOrderRequest, type Decision } from "@/lib/donation";
 import { useCart } from "./CartProvider";
 import { DonationCard } from "./DonationCard";
+import { PaymentFailure, PaymentSuccess, type Receipt } from "./OrderResult";
+import { PayButton } from "./PayButton";
 
 type Result = { key: string } & ({ ok: true; data: ClassifyResponse } | { ok: false; message: string });
 
-async function postJson<T>(url: string, body: unknown, schema: { parse: (v: unknown) => T }): Promise<T> {
-  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  const json: unknown = await res.json().catch(() => null);
-  if (!res.ok) {
-    const err = ApiError.safeParse(json);
-    throw new Error(err.success ? err.data.error.message : `Request failed (${res.status})`);
-  }
-  return schema.parse(json);
-}
+type PayConfig = { mode: "mock" | "sandbox"; clientId: string };
 
-export function Checkout() {
-  const { cart, ready } = useCart();
+export function Checkout({ pay }: { pay: PayConfig }) {
+  const { cart, ready, dispatch } = useCart();
   const request = useMemo(() => (cart.lines.length ? toClassifyRequest(cart) : null), [cart]);
   const key = request ? JSON.stringify(request) : "";
 
@@ -30,6 +25,8 @@ export function Checkout() {
   // Keyed by the classify request (the whole cart), so any cart change resets to the suggestion.
   // Not by classificationId: mock ids are fixed per product and cache hits can reuse ids.
   const [decision, setDecision] = useState<{ key: string; d: Decision } | null>(null);
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ready || !request) return;
@@ -46,6 +43,9 @@ export function Checkout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, key, retry]);
 
+  // Checked first: the cart is cleared on success.
+  if (receipt) return <Shell><PaymentSuccess r={receipt} /></Shell>;
+  if (failure) return <Shell><PaymentFailure message={failure} onRetry={() => setFailure(null)} /></Shell>;
   if (!ready) return <Shell><p className="text-zinc-500">Loading cart…</p></Shell>;
   if (!request) {
     return (
@@ -113,14 +113,24 @@ export function Checkout() {
           <div className="mt-3 border-t border-zinc-200 pt-3 font-semibold dark:border-zinc-800">
             <Row label="Total" cents={subtotal + donation} />
           </div>
-          {/* TODO(H4): PayPal buttons. Send toCreateOrderRequest(cart, classification, d) to create-order. */}
-          <button
-            type="button"
-            disabled
-            className="mt-4 w-full rounded-md bg-zinc-900 py-2 text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
-          >
-            Pay with PayPal
-          </button>
+          <div className="mt-4">
+            <PayButton
+              mode={pay.mode}
+              clientId={pay.clientId}
+              request={classification && d ? toCreateOrderRequest(cart, classification, d) : null}
+              onPaid={(r) => {
+                setReceipt({
+                  localOrderId: r.localOrderId,
+                  ledgerEntryId: r.ledgerEntryId,
+                  totalCents: subtotal + donation,
+                  donationCents: donation,
+                  causeName: classification?.causeName ?? "",
+                });
+                dispatch({ type: "clear" });
+              }}
+              onFailed={setFailure}
+            />
+          </div>
           <BackLink />
         </aside>
       </div>
