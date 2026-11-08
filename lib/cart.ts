@@ -52,6 +52,17 @@ export function cartReducer(cart: Cart, action: CartAction): Cart {
   }
 }
 
+/**
+ * Removes what was just paid for and keeps anything added since, under a new cart id
+ * (the paid order owns the old one).
+ */
+export function removePaid(cart: Cart, paid: { productId: string; quantity: number }[]): Cart {
+  const lines = cart.lines
+    .map((l) => ({ ...l, quantity: l.quantity - (paid.find((p) => p.productId === l.product.id)?.quantity ?? 0) }))
+    .filter((l) => l.quantity > 0);
+  return { id: newCartId(), lines };
+}
+
 export function itemCount(cart: Cart): number {
   return cart.lines.reduce((n, l) => n + l.quantity, 0);
 }

@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { PayPalOneTimePaymentButton, PayPalProvider } from "@paypal/react-paypal-js/sdk-v6";
+import {
+  INSTANCE_LOADING_STATE,
+  PayPalOneTimePaymentButton,
+  PayPalProvider,
+  usePayPal,
+} from "@paypal/react-paypal-js/sdk-v6";
 import type { CaptureResponse, CreateOrderRequest } from "@/contracts";
-import { captureOrder, createOrder } from "@/lib/checkout-api";
+import { captureOrder, createOrder } from "@/lib/api-client";
 
 type Props = {
   mode: "mock" | "sandbox";
@@ -11,25 +16,26 @@ type Props = {
   /** null while the donation isn't ready (still classifying, or classify failed). */
   request: CreateOrderRequest | null;
   onPaid: (r: CaptureResponse) => void;
-  onFailed: (message: string) => void;
+  /** orderId is set when the buyer approved but capture failed: retry capture on that order, never a new one. */
+  onFailed: (message: string, orderId?: string) => void;
 };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : "Payment failed");
 
 export function PayButton({ mode, clientId, request, onPaid, onFailed }: Props) {
   const [busy, setBusy] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
 
   if (mode === "mock") {
     // PAYPAL_MODE=mock: no PayPal popup, same create-order → capture calls.
     async function payMock() {
       if (!request) return;
       setBusy(true);
+      let orderId: string | undefined;
       try {
-        const { paypalOrderId } = await createOrder(request);
-        onPaid(await captureOrder(paypalOrderId));
+        orderId = (await createOrder(request)).paypalOrderId;
+        onPaid(await captureOrder(orderId));
       } catch (e) {
-        onFailed(message(e));
+        onFailed(message(e), orderId);
       } finally {
         setBusy(false);
       }
@@ -55,6 +61,31 @@ export function PayButton({ mode, clientId, request, onPaid, onFailed }: Props) 
 
   return (
     <PayPalProvider clientId={clientId} environment="sandbox" components={["paypal-payments"]} pageType="checkout">
+      <SandboxButton request={request} onPaid={onPaid} onFailed={onFailed} />
+    </PayPalProvider>
+  );
+}
+
+function SandboxButton({ request, onPaid, onFailed }: Pick<Props, "request" | "onPaid" | "onFailed">) {
+  const { loadingStatus, error } = usePayPal();
+  const [cancelled, setCancelled] = useState(false);
+
+  // Without this, an SDK load failure (bad client ID, blocked script) looks like a dead button.
+  if (loadingStatus === INSTANCE_LOADING_STATE.PENDING) {
+    return <p className="text-center text-sm text-zinc-500">Loading PayPal…</p>;
+  }
+  if (loadingStatus === INSTANCE_LOADING_STATE.REJECTED) {
+    return (
+      <p role="alert" className="text-sm text-red-600">
+        {process.env.NODE_ENV === "production"
+          ? "PayPal couldn't load. Please reload the page and try again."
+          : `PayPal couldn't load${error?.message ? `: ${error.message.replace(/\.+$/, "")}` : ""}. Check your connection and NEXT_PUBLIC_PAYPAL_CLIENT_ID, then reload.`}
+      </p>
+    );
+  }
+
+  return (
+    <>
       <PayPalOneTimePaymentButton
         disabled={!request}
         createOrder={async () => {
@@ -67,13 +98,13 @@ export function PayButton({ mode, clientId, request, onPaid, onFailed }: Props) 
           try {
             onPaid(await captureOrder(orderId));
           } catch (e) {
-            onFailed(message(e));
+            onFailed(message(e), orderId);
           }
         }}
         onCancel={() => setCancelled(true)}
         onError={(e) => onFailed(message(e))}
       />
       {cancelled && <p className="mt-1 text-center text-xs text-zinc-500">Payment cancelled. Your cart is still here.</p>}
-    </PayPalProvider>
+    </>
   );
 }
