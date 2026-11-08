@@ -5,6 +5,7 @@ import {
   adjustmentNote,
   applyEdit,
   defaultDecision,
+  fitDecision,
   maxEditCents,
   parseDollars,
   toCreateOrderRequest,
@@ -13,6 +14,16 @@ import { mockCatalog, mockClassifyByProduct } from "@/lib/mocks";
 
 const flight = mockClassifyByProduct["flight-jfk-lax"]; // 500¢, per_order_max
 const tee = mockClassifyByProduct["tee-3pack"]; // 50¢, no adjustment
+
+describe("fitDecision (re-classify after a create-order failure)", () => {
+  const c = { ...tee, donationCents: 50, maxDonationCents: 300 };
+  it("keeps removed, keeps an edit that still fits, otherwise takes the new suggestion", () => {
+    expect(fitDecision({ action: "removed", cents: 0 }, c)).toEqual({ action: "removed", cents: 0 });
+    expect(fitDecision({ action: "edited", cents: 200 }, c)).toEqual({ action: "edited", cents: 200 });
+    expect(fitDecision({ action: "edited", cents: 400 }, c)).toEqual({ action: "accepted", cents: 50 });
+    expect(fitDecision({ action: "accepted", cents: 80 }, c)).toEqual({ action: "accepted", cents: 50 });
+  });
+});
 
 describe("donation card logic", () => {
   it("parses dollar input to integer cents", () => {

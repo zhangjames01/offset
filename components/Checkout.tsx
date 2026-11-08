@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ClassifyResponse } from "@/contracts";
-import { formatCents, subtotalCents, toClassifyRequest } from "@/lib/cart";
-import { postJson } from "@/lib/checkout-api";
-import { defaultDecision, donationCents, maxEditCents, toCreateOrderRequest, type Decision } from "@/lib/donation";
+import { ClassifyResponse, type CaptureResponse } from "@/contracts";
+import { formatCents, itemCount, removePaid, subtotalCents, toClassifyRequest } from "@/lib/cart";
+import { captureOrder, postJson } from "@/lib/api-client";
+import { defaultDecision, donationCents, fitDecision, maxEditCents, toCreateOrderRequest, type Decision } from "@/lib/donation";
 import { useCart } from "./CartProvider";
 import { DonationCard } from "./DonationCard";
 import { PaymentFailure, PaymentSuccess, type Receipt } from "./OrderResult";
@@ -14,6 +14,16 @@ import { PayButton } from "./PayButton";
 type Result = { key: string } & ({ ok: true; data: ClassifyResponse } | { ok: false; message: string });
 
 type PayConfig = { mode: "mock" | "sandbox"; clientId: string };
+type ReceiptDetails = Omit<Receipt, "localOrderId" | "ledgerEntryId">;
+/** orderId: capture failed on an approved order, so "Try again" re-captures it instead of starting a new one. */
+type Failure = {
+  message: string;
+  orderId: string | null;
+  details: ReceiptDetails;
+  retries: number;
+  /** What this order paid for, so a late capture success only removes those items. */
+  paid: { productId: string; quantity: number }[];
+};
 
 export function Checkout({ pay }: { pay: PayConfig }) {
   const { cart, ready, dispatch } = useCart();
@@ -26,7 +36,8 @@ export function Checkout({ pay }: { pay: PayConfig }) {
   // Not by classificationId: mock ids are fixed per product and cache hits can reuse ids.
   const [decision, setDecision] = useState<{ key: string; d: Decision } | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const [retryingCapture, setRetryingCapture] = useState(false);
 
   // Next keeps this page mounted (hidden) when you navigate away, so a finished payment's
   // screen would still show on the next visit. Once the cart has items again, drop it.
@@ -35,7 +46,8 @@ export function Checkout({ pay }: { pay: PayConfig }) {
     setSeenCart(cart);
     if (cart.lines.length > 0) {
       setReceipt(null);
-      setFailure(null);
+      // Keep a failed capture: dropping it would let the buyer pay for the same order twice.
+      if (!failure?.orderId) setFailure(null);
     }
   }
 
@@ -55,8 +67,60 @@ export function Checkout({ pay }: { pay: PayConfig }) {
   }, [ready, key, retry]);
 
   // Checked first: the cart is cleared on success.
-  if (receipt) return <Shell><PaymentSuccess r={receipt} /></Shell>;
-  if (failure) return <Shell><PaymentFailure message={failure} onRetry={() => setFailure(null)} /></Shell>;
+  if (receipt) {
+    return (
+      <Shell>
+        <PaymentSuccess r={receipt} remaining={itemCount(cart)} onContinue={() => setReceipt(null)} />
+      </Shell>
+    );
+  }
+  function finish(r: CaptureResponse, details: ReceiptDetails, paid?: Failure["paid"]) {
+    setReceipt({ ...details, localOrderId: r.localOrderId, ledgerEntryId: r.ledgerEntryId });
+    setFailure(null);
+    // After a retried capture the cart may have changed while the failure screen was up
+    // (Next keeps this page mounted), so only remove what this order paid for.
+    if (paid) {
+      const rest = removePaid(cart, paid);
+      setSeenCart(rest); // "load" keeps this object, so the leftover items don't count as a change and hide the receipt
+      dispatch({ type: "load", cart: rest });
+    } else {
+      dispatch({ type: "clear" });
+    }
+  }
+
+  function retryFailure(f: Failure) {
+    if (!f.orderId) {
+      // create-order failed: re-classify too, in case the limits changed (e.g. monthly room).
+      // Dropping the old result stops a stale card from being paid while that runs. The
+      // buyer's decision is kept and re-checked against the new limit (fitDecision).
+      setResult(null);
+      setFailure(null);
+      setRetry((n) => n + 1);
+      return;
+    }
+    setRetryingCapture(true);
+    captureOrder(f.orderId) // capture is idempotent, so this can't charge twice
+      .then((r) => finish(r, f.details, f.paid))
+      .catch((e: unknown) =>
+        setFailure({ ...f, message: e instanceof Error ? e.message : "Capture failed", retries: f.retries + 1 }),
+      )
+      .finally(() => setRetryingCapture(false));
+  }
+
+  if (failure) {
+    return (
+      <Shell>
+        <PaymentFailure
+          message={failure.message}
+          captureFailed={failure.orderId !== null}
+          canStartOver={failure.orderId === null || failure.retries > 0}
+          busy={retryingCapture}
+          onRetry={() => retryFailure(failure)}
+          onStartOver={() => setFailure(null)}
+        />
+      </Shell>
+    );
+  }
   if (!ready) return <Shell><p className="text-zinc-500">Loading cart…</p></Shell>;
   if (!request) {
     return (
@@ -71,12 +135,14 @@ export function Checkout({ pay }: { pay: PayConfig }) {
   const classification = current?.ok ? current.data : null;
   const d =
     classification && decision?.key === key
-      ? decision.d
+      ? fitDecision(decision.d, classification)
       : classification
         ? defaultDecision(classification)
         : null;
   const subtotal = subtotalCents(cart);
   const donation = d ? donationCents(d) : 0;
+  // Display-only: the server re-prices, but both read the same catalog.
+  const details: ReceiptDetails = { totalCents: subtotal + donation, donationCents: donation, causeName: classification?.causeName ?? "" };
 
   return (
     <Shell>
@@ -129,17 +195,14 @@ export function Checkout({ pay }: { pay: PayConfig }) {
               mode={pay.mode}
               clientId={pay.clientId}
               request={classification && d ? toCreateOrderRequest(cart, classification, d) : null}
-              onPaid={(r) => {
-                setReceipt({
-                  localOrderId: r.localOrderId,
-                  ledgerEntryId: r.ledgerEntryId,
-                  totalCents: subtotal + donation,
-                  donationCents: donation,
-                  causeName: classification?.causeName ?? "",
-                });
-                dispatch({ type: "clear" });
-              }}
-              onFailed={setFailure}
+              onPaid={(r) => finish(r, details)}
+              onFailed={(message, orderId) => setFailure({
+                  message,
+                  orderId: orderId ?? null,
+                  details,
+                  retries: 0,
+                  paid: cart.lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
+                })}
             />
           </div>
           <BackLink />
