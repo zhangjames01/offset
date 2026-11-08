@@ -30,10 +30,12 @@ describe("donation card logic", () => {
     expect(applyEdit(tee, "0", 500)).toEqual({ ok: true, decision: { action: "removed", cents: 0 } });
   });
 
-  it("uses the remaining monthly room as the max when capped monthly", () => {
-    expect(maxEditCents({ ...tee, adjustment: "monthly_cap", donationCents: 120 }, 500)).toBe(120);
-    expect(maxEditCents(flight, 500)).toBe(500);
-    expect(maxEditCents(flight, null)).toBe(747);
+  it("bounds edits by the classifier's maxDonationCents (per-order max and monthly room)", () => {
+    expect(maxEditCents(flight)).toBe(500);
+    // Demo: $3.50 left this month, tee suggestion untouched → the edit max is $3.50, not the $5 per-order max.
+    const late = { ...tee, maxDonationCents: 350 };
+    expect(maxEditCents(late)).toBe(350);
+    expect(applyEdit(late, "4", maxEditCents(late))).toEqual({ ok: false, error: "Max is $3.50 for this order" });
   });
 
   it("explains adjustments", () => {

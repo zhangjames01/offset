@@ -5,6 +5,7 @@
  *   2. low_confidence  confidence < threshold → general, 100¢ (0 if general is opted out)
  *   3. per_order_max / monthly_cap → min(suggested, perOrderMax, cap − month-to-date).
  *      The binding (smaller) cap is the label; a cap overrides low_confidence's label.
+ * maxDonationCents = min(perOrderMax, cap − month-to-date): the bound for user edits.
  * The cause is always DEFAULT_CAUSE[category] (prefs.causes not used yet).
  */
 import {
@@ -32,13 +33,15 @@ export type Pricing = {
   causeId: CauseId;
   suggestedDonationCents: number;
   donationCents: number;
+  maxDonationCents: number;
   rateRule: string;
   adjustment: Adjustment | null;
 };
 
 export function price({ category, confidence, subtotalCents, prefs, monthToDateCents }: PricingInput): Pricing {
   const optedOut = (c: Category) => prefs.optOutCategories.includes(c);
-  const base = (c: Category) => ({ category: c, causeId: DEFAULT_CAUSE[c] });
+  const maxDonationCents = editLimit(prefs, monthToDateCents);
+  const base = (c: Category) => ({ category: c, causeId: DEFAULT_CAUSE[c], maxDonationCents });
 
   if (optedOut(category)) {
     return {
@@ -73,16 +76,23 @@ export function price({ category, confidence, subtotalCents, prefs, monthToDateC
   };
 }
 
+function monthlyRemaining(prefs: PricingInput["prefs"], monthToDateCents: number): number {
+  return Math.max(0, prefs.monthlyCapCents - monthToDateCents);
+}
+
+function editLimit(prefs: PricingInput["prefs"], monthToDateCents: number): number {
+  return Math.min(prefs.perOrderMaxCents, monthlyRemaining(prefs, monthToDateCents));
+}
+
 function applyCaps(
   cents: number,
   prefs: PricingInput["prefs"],
   monthToDateCents: number,
 ): { cents: number; adjustment: "per_order_max" | "monthly_cap" | null } {
-  const monthlyRemaining = Math.max(0, prefs.monthlyCapCents - monthToDateCents);
-  const limit = Math.min(prefs.perOrderMaxCents, monthlyRemaining);
+  const limit = editLimit(prefs, monthToDateCents);
   if (cents <= limit) return { cents, adjustment: null };
   return {
     cents: limit,
-    adjustment: monthlyRemaining < prefs.perOrderMaxCents ? "monthly_cap" : "per_order_max",
+    adjustment: monthlyRemaining(prefs, monthToDateCents) < prefs.perOrderMaxCents ? "monthly_cap" : "per_order_max",
   };
 }

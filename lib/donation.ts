@@ -9,13 +9,11 @@ export function defaultDecision(c: ClassifyResponse): Decision {
 }
 
 /**
- * Highest amount the edit input allows. The server re-checks caps at create-order, so this is UX only.
- * monthly_cap: the classifier already gave the remaining monthly room, so that's the ceiling.
+ * Highest amount the edit input allows: the classifier's maxDonationCents, i.e.
+ * min(per-order max, what's left of the monthly cap). create-order re-checks it, so this is UX only.
  */
-export function maxEditCents(c: ClassifyResponse, perOrderMaxCents: number | null): number {
-  if (c.adjustment === "monthly_cap") return c.donationCents;
-  if (perOrderMaxCents !== null) return perOrderMaxCents;
-  return Math.max(c.donationCents, c.suggestedDonationCents);
+export function maxEditCents(c: ClassifyResponse): number {
+  return c.maxDonationCents;
 }
 
 /** "2.50" / "$2.5" / "3" / ".50" → cents. null if not a valid non-negative amount with at most 2 decimals. */

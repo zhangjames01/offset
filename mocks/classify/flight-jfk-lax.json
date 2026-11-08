@@ -6,6 +6,7 @@
   "causeName": "Carbon removal (placeholder partner)",
   "suggestedDonationCents": 747,
   "donationCents": 500,
+  "maxDonationCents": 500,
   "rateRule": "3% of fare",
   "reason": "Air travel is carbon-intensive, so this routes to carbon removal.",
   "adjustment": "per_order_max",

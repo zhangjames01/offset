@@ -6,6 +6,7 @@
   "causeName": "Food bank (placeholder partner)",
   "suggestedDonationCents": 100,
   "donationCents": 100,
+  "maxDonationCents": 500,
   "rateRule": "flat $1.00",
   "reason": "A courier-delivered meal is food delivery, so this routes to a food bank.",
   "adjustment": null,

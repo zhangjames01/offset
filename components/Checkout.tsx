@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ApiError, ClassifyResponse, Preferences } from "@/contracts";
+import { ApiError, ClassifyResponse } from "@/contracts";
 import { formatCents, subtotalCents, toClassifyRequest } from "@/lib/cart";
 import { defaultDecision, donationCents, maxEditCents, type Decision } from "@/lib/donation";
 import { useCart } from "./CartProvider";
@@ -27,7 +27,6 @@ export function Checkout() {
 
   const [result, setResult] = useState<Result | null>(null);
   const [retry, setRetry] = useState(0);
-  const [perOrderMax, setPerOrderMax] = useState<number | null>(null);
   // Keyed by the classify request (the whole cart), so any cart change resets to the suggestion.
   // Not by classificationId: mock ids are fixed per product and cache hits can reuse ids.
   const [decision, setDecision] = useState<{ key: string; d: Decision } | null>(null);
@@ -46,18 +45,6 @@ export function Checkout() {
     // key captures every field of request
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, key, retry]);
-
-  // Edit bound only. If this fails the card falls back to the suggested amount as the max.
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/preferences")
-      .then(async (r) => (r.ok ? Preferences.parse(await r.json()) : null))
-      .then((p) => !cancelled && p && setPerOrderMax(p.perOrderMaxCents))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   if (!ready) return <Shell><p className="text-zinc-500">Loading cart…</p></Shell>;
   if (!request) {
@@ -113,7 +100,7 @@ export function Checkout() {
                 key={key}
                 classification={classification}
                 decision={d}
-                maxCents={maxEditCents(classification, perOrderMax)}
+                maxCents={maxEditCents(classification)}
                 onChange={(next) => setDecision({ key, d: next })}
               />
             )}
