@@ -1,7 +1,7 @@
 // POST /api/classify — owner: James (A2/A3). Cart → ClassifyResponse.
 // live: cache → LLM → rules fallback (never CLASSIFY_FAILED). rules: keyword classifier only.
 import { ClassifyRequest, ClassifyResponse } from "@/contracts";
-import { handle, modes, ok, parseBody } from "@/lib/api";
+import { ApiFailure, handle, modes, ok, parseBody } from "@/lib/api";
 import { classify, liveDeps, rulesDeps } from "@/lib/classifier";
 import { mockClassifyByProduct, mockUnknownProduct } from "@/lib/mocks";
 import { store } from "@/lib/mock-store";

@@ -61,9 +61,12 @@ async function expectError(res: Response, status: number, code: string) {
 }
 
 beforeEach(() => {
-  resetStore();
   vi.unstubAllEnvs();
+  vi.stubEnv("LLM_MODE", "mock");
+  vi.stubEnv("PAYPAL_MODE", "mock");
+  resetStore();
 });
+
 afterEach(() => vi.unstubAllEnvs());
 
 describe("mock mode routes", () => {
@@ -179,11 +182,14 @@ describe("real mode behavior", () => {
     );
 
     vi.stubEnv("LLM_MODE", "rules");
-    await expectError(
-      await classify(post(flightCart)),
-      501,
-      "NOT_IMPLEMENTED",
-    );
+
+    const response = await classify(post(flightCart));
+
+    expect(response.status).toBe(200);
+
+    const result = ClassifyResponse.parse(await response.json());
+
+    expect(result.category).toBe("air_travel");
   });
 
   test("PAYPAL_MODE=sandbox rejects unknown classifications", async () => {
