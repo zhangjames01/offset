@@ -140,6 +140,11 @@ function guards(): Guards {
   return g.__offsetClassifyGuards;
 }
 
+/** Spends one call from the global daily LLM budget. The preferences parser (A4) shares it. */
+export function takeGlobalLlmBudget(): boolean {
+  return guards().global.take("all");
+}
+
 /** For tests: empty the cache and reset the rate limits. */
 export function resetClassifyGuards(): void {
   g.__offsetClassifyGuards = undefined;
