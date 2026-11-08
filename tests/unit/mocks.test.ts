@@ -38,6 +38,7 @@ describe("mocks/", () => {
     for (const [id, r] of Object.entries(mockClassifyByProduct)) {
       expect(r.donationCents, id).toBeLessThanOrEqual(mockPreferences.perOrderMaxCents);
       expect(r.donationCents, id).toBeLessThanOrEqual(r.suggestedDonationCents);
+      expect(r.donationCents, id).toBeLessThanOrEqual(r.maxDonationCents);
       if (mockPreferences.optOutCategories.includes(r.category)) {
         expect(r.donationCents, id).toBe(0);
         expect(r.adjustment, id).toBe("opted_out");

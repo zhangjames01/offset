@@ -1,7 +1,7 @@
 /**
  * Live LLM call (A2): Claude Haiku 5.5 with JSON-schema output, validated by zod.
- * No retries here. Every failure is a typed LlmError so A3 can switch to the rules
- * classifier on invalid_output / timeout / rate_limited.
+ * No retries here. Every failure is a typed LlmError; classify() then switches to the rules
+ * classifier (A3), so a failed call never reaches the user.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { Category, LlmClassification, type ClassifyRequest } from "@/contracts";

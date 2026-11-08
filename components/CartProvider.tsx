@@ -7,7 +7,8 @@ const STORAGE_KEY = "offset.cart.v1";
 // Placeholder id until localStorage has been read. Never saved.
 const PENDING_ID = "cart_pending";
 
-type CartContextValue = { cart: Cart; dispatch: (action: CartAction) => void };
+/** ready is false until localStorage has been read; don't act on the cart before then. */
+type CartContextValue = { cart: Cart; ready: boolean; dispatch: (action: CartAction) => void };
 const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
@@ -36,7 +37,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [cart]);
 
-  return <CartContext.Provider value={{ cart, dispatch }}>{children}</CartContext.Provider>;
+  return <CartContext.Provider value={{ cart, ready: cart.id !== PENDING_ID, dispatch }}>{children}</CartContext.Provider>;
 }
 
 export function useCart(): CartContextValue {

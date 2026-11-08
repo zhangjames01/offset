@@ -6,6 +6,7 @@
   "causeName": "Textile recycling (placeholder partner)",
   "suggestedDonationCents": 50,
   "donationCents": 50,
+  "maxDonationCents": 500,
   "rateRule": "2% of item price",
   "reason": "Low-cost trend clothing is fast fashion, so this routes to textile recycling.",
   "adjustment": null,

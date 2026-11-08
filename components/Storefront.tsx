@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CatalogResponse, type Product } from "@/contracts";
 import { formatCents, itemCount, MAX_QTY, subtotalCents } from "@/lib/cart";
@@ -111,14 +112,18 @@ function CartPanel() {
         <span>Subtotal</span>
         <span className="tabular-nums">{formatCents(subtotalCents(cart))}</span>
       </div>
-      {/* TODO(H3): link to /checkout once the donation card page exists. */}
-      <button
-        type="button"
-        disabled
-        className="mt-4 w-full rounded-md bg-zinc-900 py-2 text-sm text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
-      >
-        Checkout
-      </button>
+      {count === 0 ? (
+        <span className="mt-4 block w-full rounded-md bg-zinc-900 py-2 text-center text-sm text-white opacity-40 dark:bg-zinc-100 dark:text-zinc-900">
+          Checkout
+        </span>
+      ) : (
+        <Link
+          href="/checkout"
+          className="mt-4 block w-full rounded-md bg-zinc-900 py-2 text-center text-sm text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          Checkout
+        </Link>
+      )}
     </aside>
   );
 }

@@ -6,6 +6,7 @@
   "causeName": "General giving fund (placeholder partner)",
   "suggestedDonationCents": 75,
   "donationCents": 75,
+  "maxDonationCents": 500,
   "rateRule": "round up to next dollar",
   "reason": "A book has no specific footprint category, so this rounds up to the general fund.",
   "adjustment": null,

@@ -1,9 +1,11 @@
 // POST /api/classify — owner: James (A2/A3). Cart → ClassifyResponse.
+// live: cache → LLM → rules fallback (never CLASSIFY_FAILED). rules: keyword classifier only.
 import { ClassifyRequest, ClassifyResponse } from "@/contracts";
-import { ApiFailure, handle, modes, notImplemented, ok, parseBody } from "@/lib/api";
-import { LlmError, classify, liveDeps } from "@/lib/classifier";
+import { handle, modes, ok, parseBody } from "@/lib/api";
+import { classify, liveDeps, rulesDeps } from "@/lib/classifier";
 import { mockClassifyByProduct, mockUnknownProduct } from "@/lib/mocks";
 import { store } from "@/lib/mock-store";
+import { clientIp } from "@/lib/rate-limit";
 import { randomUUID } from "node:crypto";
 import { getPrisma } from "@/lib/db";
 import { hashCart } from "@/lib/checkout/cart-hash";
@@ -13,24 +15,8 @@ export const POST = handle(async (req: Request) => {
   const cart = await parseBody(req, ClassifyRequest);
   const mode = modes.llm();
 
-  if (mode === "live") {
-    try {
-      return ok(ClassifyResponse, await classify(cart, liveDeps()));
-    } catch (err) {
-      // A3 replaces this with the rules fallback (invalid_output / timeout / rate_limited).
-      if (err instanceof LlmError) {
-        // Details stay in the server log; the client gets a generic message.
-        console.error(`[classify] ${err.kind}: ${err.message}`);
-        throw new ApiFailure(
-          "CLASSIFY_FAILED",
-          "Unable to classify your purchase right now.",
-          err.kind === "not_configured" ? 503 : 502,
-        );
-      }
-      throw err;
-    }
-  }
-  if (mode !== "mock") notImplemented(`LLM_MODE=${mode}`, "A3");
+  if (mode === "live") return ok(ClassifyResponse, await classify(cart, liveDeps(clientIp(req))));
+  if (mode === "rules") return ok(ClassifyResponse, await classify(cart, rulesDeps()));
 
   // Mock: use the canned response for the highest-priced line in the cart.
   const top = [...cart.items].sort(
