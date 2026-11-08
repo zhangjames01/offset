@@ -122,17 +122,18 @@ model PayoutBatchItem {
 
 
 model CheckoutAttempt {
-  id            String   @id @default(cuid())
-  userId        String
-  cartId        String
-  requestHash   String
-  status        String   @default("PENDING")
-  paypalOrderId String?  @unique
-  localOrderId  String   @unique
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String
+  cartId          String
+  requestHash     String
+  status          String   @default("PENDING")
+  processingToken String?
+  paypalOrderId   String?  @unique
+  localOrderId    String   @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@unique([userId, cartId])
+  @@unique([userId, cartId, requestHash])
 }
 
 

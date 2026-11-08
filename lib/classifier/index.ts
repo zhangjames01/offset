@@ -18,12 +18,13 @@ import {
   type Preferences,
 } from "@/contracts";
 import { mockCatalog, mockCauses } from "@/lib/mocks";
-import { nextId, store } from "@/lib/mock-store";
+import { store } from "@/lib/mock-store";
 import { slidingWindowLimiter, type RateLimiter } from "@/lib/rate-limit";
 import { type ClassificationCache, cartKey, memoryCache } from "./cache";
 import { LlmError, anthropicClassifier, type LlmClassifier } from "./llm";
 import { price } from "./pricing";
 import { rulesClassify } from "./rules";
+import { randomUUID } from "node:crypto";
 
 export { LlmError, type LlmErrorKind } from "./llm";
 
@@ -146,7 +147,7 @@ export const mockClassifyStore: ClassifyStore = {
       .ledger.filter((e) => e.userId === userId && e.createdAt.startsWith(month))
       .reduce((s, e) => s + e.amountCents, 0);
   },
-  newClassificationId: () => nextId("cls_"),
+  newClassificationId: () => `cls_${randomUUID()}`,
   save: async (r) => void store().classifications.set(r.classificationId, r),
 };
 

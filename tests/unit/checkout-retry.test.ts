@@ -1,11 +1,4 @@
-
-import {
-  beforeEach,
-  describe,
-  expect,
-  test,
-  vi,
-} from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { POST } from "@/app/api/checkout/create-order/route";
 import { createPayPalOrder } from "@/lib/paypal/client";
@@ -30,9 +23,7 @@ const product = mockCatalog.products[0];
 
 const checkoutBody = {
   cartId: "cart_retry_test",
-  items: [
-    { productId: product.id, quantity: 1 },
-  ],
+  items: [{ productId: product.id, quantity: 1 }],
   donation: {
     classificationId: "cls_retry_test",
     donationCents: 100,
@@ -48,10 +39,13 @@ type Attempt = {
   requestHash: string;
   status: string;
   paypalOrderId: string | null;
+  processingToken: string | null;
   localOrderId: string;
+  updatedAt: Date;
 };
 
-let attempt: Attempt | null;
+let attempts: Attempt[];
+const latestAttempt = () => attempts.at(-1);
 let savedOrder: { id: string; paypalOrderId: string } | null;
 let failTransaction: boolean;
 
@@ -74,29 +68,61 @@ const classification = {
 
 const tx = {
   order: {
-    create: vi.fn(async ({ data }: {
-      data: { id: string; paypalOrderId: string };
-    }) => {
-      savedOrder = {
-        id: data.id,
-        paypalOrderId: data.paypalOrderId,
-      };
-    }),
+    create: vi.fn(
+      async ({ data }: { data: { id: string; paypalOrderId: string } }) => {
+        savedOrder = {
+          id: data.id,
+          paypalOrderId: data.paypalOrderId,
+        };
+      },
+    ),
   },
+
   checkoutAttempt: {
-    update: vi.fn(async ({ data }: {
-      data: { status: string; paypalOrderId: string };
-    }) => {
-      if (!attempt) throw new Error("Missing attempt");
-      attempt.status = data.status;
-      attempt.paypalOrderId = data.paypalOrderId;
-    }),
+    updateMany: vi.fn(
+      async ({
+        where,
+        data,
+      }: {
+        where: {
+          id: string;
+          status: string;
+          processingToken: string;
+        };
+        data: {
+          status: string;
+          paypalOrderId: string;
+          processingToken: null;
+        };
+      }) => {
+        const found = attempts.find(
+          (a) =>
+            a.id === where.id &&
+            a.status === where.status &&
+            a.processingToken === where.processingToken,
+        );
+
+        if (!found) {
+          return { count: 0 };
+        }
+
+        found.status = data.status;
+        found.paypalOrderId = data.paypalOrderId;
+        found.processingToken = data.processingToken;
+
+        return { count: 1 };
+      },
+    ),
   },
 };
 
 const prisma = {
   classificationApproval: {
-    findUnique: vi.fn(async () => classification),
+    findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+      where.id === classification.id || where.id === "cls_reclassified"
+        ? { ...classification, id: where.id }
+        : null,
+    ),
   },
   preferences: {
     findUnique: vi.fn(async () => ({
@@ -110,72 +136,161 @@ const prisma = {
     })),
   },
   checkoutAttempt: {
-    createMany: vi.fn(async ({ data }: {
-      data: Array<{
-        userId: string;
-        cartId: string;
-        requestHash: string;
-        status: string;
-        localOrderId: string;
-      }>;
-    }) => {
-      if (attempt) return { count: 0 };
-
-      attempt = {
-        id: "attempt_1",
-        ...data[0],
-        paypalOrderId: null,
-      };
-      return { count: 1 };
-    }),
-    findUniqueOrThrow: vi.fn(async () => {
-      if (!attempt) throw new Error("Missing attempt");
-      return { ...attempt };
-    }),
-    updateMany: vi.fn(async ({ where, data }: {
-      where: {
-        id: string;
-        status: string;
-        requestHash?: string;
-      };
-      data: { status: string };
-    }) => {
-      if (
-        !attempt ||
-        attempt.id !== where.id ||
-        attempt.status !== where.status ||
-        (where.requestHash !== undefined &&
-          attempt.requestHash !== where.requestHash)
-      ) {
-        return { count: 0 };
-      }
-
-      attempt.status = data.status;
-      return { count: 1 };
-    }),
-  },
-  $transaction: vi.fn(async (
-    callback: (client: typeof tx) => Promise<unknown>,
-  ) => {
-    if (failTransaction) {
-      throw new Error("Simulated Neon failure");
-    }
-    return callback(tx);
-  }),
-};
-
-async function checkout(
-  body: typeof checkoutBody = checkoutBody,
-) {
-  const response = await POST(
-    new Request(
-      "http://localhost:3000/api/checkout/create-order",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+    createMany: vi.fn(
+      async ({
+        data,
+      }: {
+        data: Array<{
+          userId: string;
+          cartId: string;
+          requestHash: string;
+          status: string;
+          localOrderId: string;
+        }>;
+      }) => {
+        let count = 0;
+        for (const entry of data) {
+          if (
+            attempts.some(
+              (a) =>
+                a.userId === entry.userId &&
+                a.cartId === entry.cartId &&
+                a.requestHash === entry.requestHash,
+            )
+          ) {
+            continue;
+          }
+          attempts.push({
+            id: `attempt_${attempts.length + 1}`,
+            ...entry,
+            paypalOrderId: null,
+            processingToken: null,
+            updatedAt: new Date(),
+          });
+          count++;
+        }
+        return { count };
       },
     ),
+    findUniqueOrThrow: vi.fn(
+      async ({
+        where,
+      }: {
+        where: {
+          userId_cartId_requestHash: {
+            userId: string;
+            cartId: string;
+            requestHash: string;
+          };
+        };
+      }) => {
+        const key = where.userId_cartId_requestHash;
+        const found = attempts.find(
+          (a) =>
+            a.userId === key.userId &&
+            a.cartId === key.cartId &&
+            a.requestHash === key.requestHash,
+        );
+        if (!found) throw new Error("Missing attempt");
+        return { ...found };
+      },
+    ),
+
+    updateMany: vi.fn(
+      async ({
+        where,
+        data,
+      }: {
+        where: {
+          id: string;
+          requestHash?: string;
+          status?: string;
+          processingToken?: string;
+          OR?: Array<
+            { status: string } | { status: string; updatedAt: { lt: Date } }
+          >;
+        };
+        data: {
+          status: string;
+          processingToken?: string | null;
+          updatedAt?: Date;
+        };
+      }) => {
+        const found = attempts.find((a) => {
+          if (a.id !== where.id) return false;
+
+          if (
+            where.requestHash !== undefined &&
+            a.requestHash !== where.requestHash
+          ) {
+            return false;
+          }
+
+          if (where.status !== undefined && a.status !== where.status) {
+            return false;
+          }
+
+          if (
+            where.processingToken !== undefined &&
+            a.processingToken !== where.processingToken
+          ) {
+            return false;
+          }
+
+          if (where.OR) {
+            const matches = where.OR.some((condition) => {
+              if (a.status !== condition.status) return false;
+
+              if ("updatedAt" in condition) {
+                return a.updatedAt < condition.updatedAt.lt;
+              }
+
+              return true;
+            });
+
+            if (!matches) return false;
+          }
+
+          return true;
+        });
+
+        if (!found) return { count: 0 };
+
+        found.status = data.status;
+
+        if (data.processingToken !== undefined) {
+          found.processingToken = data.processingToken;
+        }
+
+        found.updatedAt = data.updatedAt ?? new Date();
+
+        return { count: 1 };
+      },
+    ),
+  },
+  $transaction: vi.fn(
+    async (callback: (client: typeof tx) => Promise<unknown>) => {
+      if (failTransaction) {
+        throw new Error("Simulated Neon failure");
+      }
+      return callback(tx);
+    },
+  ),
+};
+
+type CheckoutBody = Omit<typeof checkoutBody, "donation"> & {
+  donation: Omit<typeof checkoutBody.donation, "userAction"> & {
+    userAction: "accepted" | "edited" | "removed";
+  };
+};
+
+async function checkout(body: CheckoutBody = checkoutBody) {
+  const response = await POST(
+    new Request("http://localhost:3000/api/checkout/create-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   );
 
   return {
@@ -187,7 +302,7 @@ async function checkout(
 beforeEach(() => {
   vi.stubEnv("PAYPAL_MODE", "sandbox");
 
-  attempt = null;
+  attempts = [];
   savedOrder = null;
   failTransaction = false;
 
@@ -201,18 +316,14 @@ describe("J3 checkout retry protection", () => {
     const result = await checkout();
 
     expect(result.status).toBe(201);
-    expect(result.body.paypalOrderId)
-      .toBe("PAYPAL_TEST_123");
+    expect(result.body.paypalOrderId).toBe("PAYPAL_TEST_123");
 
-    expect(savedOrder?.paypalOrderId)
-      .toBe("PAYPAL_TEST_123");
+    expect(savedOrder?.paypalOrderId).toBe("PAYPAL_TEST_123");
 
-    expect(attempt?.status).toBe("CREATED");
-    expect(attempt?.paypalOrderId)
-      .toBe("PAYPAL_TEST_123");
+    expect(latestAttempt()?.status).toBe("CREATED");
+    expect(latestAttempt()?.paypalOrderId).toBe("PAYPAL_TEST_123");
 
-    expect(prisma.$transaction)
-      .toHaveBeenCalledOnce();
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
   });
 
   test("identical retry returns the same order", async () => {
@@ -234,22 +345,18 @@ describe("J3 checkout retry protection", () => {
     const first = await checkout();
 
     expect(first.status).toBe(502);
-    expect(attempt?.status).toBe("PENDING");
+    expect(latestAttempt()?.status).toBe("PENDING");
 
-    const originalId = attempt?.localOrderId;
+    const originalId = latestAttempt()?.localOrderId;
 
     const second = await checkout();
 
     expect(second.status).toBe(201);
-    expect(second.body.paypalOrderId)
-      .toBe("PAYPAL_RECOVERED");
-    expect(second.body.localOrderId)
-      .toBe(originalId);
+    expect(second.body.paypalOrderId).toBe("PAYPAL_RECOVERED");
+    expect(second.body.localOrderId).toBe(originalId);
 
-    expect(paypalMock.mock.calls[0][1])
-      .toBe(originalId);
-    expect(paypalMock.mock.calls[1][1])
-      .toBe(originalId);
+    expect(paypalMock.mock.calls[0][2]).toBe(originalId);
+    expect(paypalMock.mock.calls[1][2]).toBe(originalId);
   });
 
   test("Neon failure releases the attempt", async () => {
@@ -258,26 +365,23 @@ describe("J3 checkout retry protection", () => {
     const first = await checkout();
 
     expect(first.status).toBe(500);
-    expect(attempt?.status).toBe("PENDING");
+    expect(latestAttempt()?.status).toBe("PENDING");
 
-    const originalId = attempt?.localOrderId;
+    const originalId = latestAttempt()?.localOrderId;
 
     failTransaction = false;
 
     const second = await checkout();
 
     expect(second.status).toBe(201);
-    expect(second.body.localOrderId)
-      .toBe(originalId);
-    expect(attempt?.status).toBe("CREATED");
+    expect(second.body.localOrderId).toBe(originalId);
+    expect(latestAttempt()?.status).toBe("CREATED");
 
-    expect(paypalMock.mock.calls[0][1])
-      .toBe(originalId);
-    expect(paypalMock.mock.calls[1][1])
-      .toBe(originalId);
+    expect(paypalMock.mock.calls[0][2]).toBe(originalId);
+    expect(paypalMock.mock.calls[1][2]).toBe(originalId);
   });
 
-  test("changed request is rejected", async () => {
+  test("changed accepted donation is rejected", async () => {
     await checkout();
 
     const changed = {
@@ -294,13 +398,67 @@ describe("J3 checkout retry protection", () => {
     expect(paypalMock).toHaveBeenCalledOnce();
   });
 
+  test("edited donation creates a new checkout attempt", async () => {
+    const first = await checkout();
+    const edited = {
+      ...checkoutBody,
+      donation: {
+        ...checkoutBody.donation,
+        donationCents: 150,
+        userAction: "edited" as const,
+      },
+    };
+    paypalMock.mockResolvedValueOnce("PAYPAL_EDITED");
+    const second = await checkout(edited);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.paypalOrderId).toBe("PAYPAL_EDITED");
+    expect(second.body.localOrderId).not.toBe(first.body.localOrderId);
+    expect(attempts).toHaveLength(2);
+    expect(paypalMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("removed donation creates a new checkout attempt", async () => {
+    const first = await checkout();
+    const removed = {
+      ...checkoutBody,
+      donation: {
+        ...checkoutBody.donation,
+        donationCents: 0,
+        userAction: "removed" as const,
+      },
+    };
+    const second = await checkout(removed);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.localOrderId).not.toBe(first.body.localOrderId);
+    expect(attempts).toHaveLength(2);
+  });
+
+  test("new classification ID creates a new checkout attempt", async () => {
+    const first = await checkout();
+    const reclassified = {
+      ...checkoutBody,
+      donation: {
+        ...checkoutBody.donation,
+        classificationId: "cls_reclassified",
+      },
+    };
+    const second = await checkout(reclassified);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.localOrderId).not.toBe(first.body.localOrderId);
+    expect(attempts).toHaveLength(2);
+  });
+
   test("concurrent request cannot claim twice", async () => {
     let release!: (id: string) => void;
 
     paypalMock.mockImplementationOnce(
-      () => new Promise<string>((resolve) => {
-        release = resolve;
-      }),
+      () =>
+        new Promise<string>((resolve) => {
+          release = resolve;
+        }),
     );
 
     const firstPromise = checkout();
@@ -320,11 +478,75 @@ describe("J3 checkout retry protection", () => {
     const first = await firstPromise;
 
     expect(first.status).toBe(201);
-    expect(attempt?.status).toBe("CREATED");
+    expect(latestAttempt()?.status).toBe("CREATED");
   });
 
   test("request hash stays stable for identical input", () => {
-    expect(hashCheckoutRequest(checkoutBody))
-      .toBe(hashCheckoutRequest(checkoutBody));
+    expect(hashCheckoutRequest(checkoutBody)).toBe(
+      hashCheckoutRequest(checkoutBody),
+    );
+  });
+
+  test("stale PROCESSING attempt can be retried", async () => {
+    const requestHash = hashCheckoutRequest(checkoutBody);
+
+    attempts.push({
+      id: "attempt_stale",
+      userId: mockPreferences.userId,
+      cartId: checkoutBody.cartId,
+      requestHash,
+      status: "PROCESSING",
+      paypalOrderId: null,
+      localOrderId: "ord_original",
+      processingToken: "old_processing_token",
+      updatedAt: new Date(Date.now() - 60_000),
+    });
+
+    const result = await checkout();
+
+    expect(result.status).toBe(201);
+    expect(result.body.localOrderId).toBe("ord_original");
+    expect(paypalMock).toHaveBeenCalledOnce();
+    expect(paypalMock.mock.calls[0][2]).toBe("ord_original");
+    expect(latestAttempt()?.status).toBe("CREATED");
+  });
+
+  test("older request cannot finalize after a stale retry", async () => {
+    let releaseFirst!: (id: string) => void;
+
+    paypalMock.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          releaseFirst = resolve;
+        }),
+    );
+
+    const firstPromise = checkout();
+
+    await vi.waitFor(() => {
+      expect(paypalMock).toHaveBeenCalledOnce();
+    });
+
+    const attempt = latestAttempt();
+    expect(attempt?.status).toBe("PROCESSING");
+
+    // Make the first request eligible for a stale retry.
+    attempt!.updatedAt = new Date(Date.now() - 60_000);
+
+    paypalMock.mockResolvedValueOnce("PAYPAL_TEST_123");
+
+    const second = await checkout();
+
+    expect(second.status).toBe(201);
+    expect(latestAttempt()?.status).toBe("CREATED");
+
+    // The older request finishes after ownership has changed.
+    releaseFirst("PAYPAL_TEST_123");
+
+    const first = await firstPromise;
+
+    expect(first.status).toBe(409);
+    expect(tx.order.create).toHaveBeenCalledOnce();
+    expect(latestAttempt()?.status).toBe("CREATED");
   });
 });

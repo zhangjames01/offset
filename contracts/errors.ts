@@ -8,6 +8,7 @@ export const ErrorCode = z.enum([
   "CLASSIFY_FAILED",
   "PAYPAL_CREATE_FAILED",
   "PAYPAL_CAPTURE_FAILED",
+  "CHECKOUT_CONFLICT",
   "PAYOUT_FAILED",
   "NOT_IMPLEMENTED", // real mode selected but not built yet (A2 / J3 / J6)
   "INTERNAL",

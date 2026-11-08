@@ -18,6 +18,28 @@ export const POST = handle(async (req: Request) => {
     mockCatalog.products.map((p) => [p.id, p.priceCents]),
   );
 
+  
+  const paypalProducts = body.items.map((item) => {
+    const product = mockCatalog.products.find(
+      (p) => p.id === item.productId,
+    );
+
+    if (!product) {
+      throw new ApiFailure(
+        "VALIDATION_ERROR",
+        `Unknown productId: ${item.productId}`,
+        400,
+      );
+    }
+
+    return {
+      name: product.name,
+      unitPriceCents: product.priceCents,
+      quantity: item.quantity,
+    };
+  });
+
+
   let purchaseCents = 0;
 
   for (const item of body.items) {
@@ -267,22 +289,16 @@ export const POST = handle(async (req: Request) => {
     skipDuplicates: true,
   });
 
-  const attempt = await prisma.checkoutAttempt.findUniqueOrThrow({
-    where: {
-      userId_cartId: {
-        userId,
-        cartId: body.cartId,
-      },
+  
+const attempt = await prisma.checkoutAttempt.findUniqueOrThrow({
+  where: {
+    userId_cartId_requestHash: {
+      userId,
+      cartId: body.cartId,
+      requestHash,
     },
-  });
-
-  if (attempt.requestHash !== requestHash) {
-    throw new ApiFailure(
-      "VALIDATION_ERROR",
-      "This cart already has a different checkout attempt.",
-      409,
-    );
-  }
+  },
+});
 
   if (attempt.status === "CREATED" && attempt.paypalOrderId) {
     return ok(
@@ -297,24 +313,38 @@ export const POST = handle(async (req: Request) => {
 
   // Claim a pending attempt atomically.
   // Only one request can transition PENDING -> PROCESSING.
+
+  // Allow a retry if PROCESSING has been stale for 30 seconds.
+  const staleBefore = new Date(Date.now() - 30_000);
+  const processingToken = randomUUID();
+
   const claim = await prisma.checkoutAttempt.updateMany({
     where: {
       id: attempt.id,
-      status: "PENDING",
       requestHash,
+      OR: [
+        { status: "PENDING" },
+        {
+          status: "PROCESSING",
+          updatedAt: { lt: staleBefore },
+        },
+      ],
     },
     data: {
       status: "PROCESSING",
+      processingToken,
+      updatedAt: new Date(),
     },
   });
 
+
   if (claim.count !== 1) {
-    throw new ApiFailure(
-      "INTERNAL",
-      "Checkout is being processed. Please retry shortly.",
-      409,
-    );
-  }
+  throw new ApiFailure(
+    "CHECKOUT_CONFLICT",
+    "Checkout is being processed. Please retry shortly.",
+    409,
+  );
+}
 
   // Reuse this identifier for every retry.
   const localOrderId = attempt.localOrderId;
@@ -323,9 +353,10 @@ export const POST = handle(async (req: Request) => {
 
   try {
     paypalOrderId = await createPayPalOrder(
-      totalCents,
-      localOrderId,
-    );
+    paypalProducts,
+    donationCents,
+    localOrderId,
+  );
   } catch (error) {
     console.error("[paypal] create-order failed", error);
 
@@ -335,9 +366,11 @@ export const POST = handle(async (req: Request) => {
         where: {
           id: attempt.id,
           status: "PROCESSING",
+          processingToken,
         },
         data: {
           status: "PENDING",
+          processingToken: null,
         },
       });
     } catch (recoveryError) {
@@ -348,7 +381,7 @@ export const POST = handle(async (req: Request) => {
     }
 
     throw new ApiFailure(
-      "INTERNAL",
+      "PAYPAL_CREATE_FAILED",
       "Unable to create PayPal order",
       502,
     );
@@ -358,6 +391,26 @@ export const POST = handle(async (req: Request) => {
     // Create the local order and mark the checkout complete
     // in the same database transaction.
     await prisma.$transaction(async (tx) => {
+      const finalized = await tx.checkoutAttempt.updateMany({
+        where: {
+          id: attempt.id,
+          status: "PROCESSING",
+          processingToken,
+        },
+        data: {
+          status: "CREATED",
+          paypalOrderId,
+          processingToken: null,
+        },
+      });
+
+      if (finalized.count !== 1) {
+        throw new ApiFailure(
+          "CHECKOUT_CONFLICT",
+          "Checkout ownership changed. Please retry.",
+          409,
+        );
+      }
       await tx.order.create({
         data: {
           id: localOrderId,
@@ -376,16 +429,12 @@ export const POST = handle(async (req: Request) => {
           items: body.items,
         },
       });
-
-      await tx.checkoutAttempt.update({
-        where: { id: attempt.id },
-        data: {
-          status: "CREATED",
-          paypalOrderId,
-        },
-      });
     });
   } catch (error) {
+    if (error instanceof ApiFailure) {
+      throw error;
+    }
+    
     console.error("[checkout] order persistence failed", error);
 
     // The transaction rolls back both database writes.
@@ -395,9 +444,11 @@ export const POST = handle(async (req: Request) => {
         where: {
           id: attempt.id,
           status: "PROCESSING",
+          processingToken,
         },
         data: {
           status: "PENDING",
+          processingToken: null,
         },
       });
     } catch (recoveryError) {

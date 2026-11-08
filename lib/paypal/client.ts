@@ -52,12 +52,66 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+
+export type PayPalOrderItem = {
+  name: string;
+  unitPriceCents: number;
+  quantity: number;
+};
+
 export async function createPayPalOrder(
-  totalCents: number,
+  products: PayPalOrderItem[],
+  donationCents: number,
   localOrderId: string,
 ): Promise<string> {
+  if (products.length === 0) {
+    throw new Error("PayPal order must contain products");
+  }
+
+  if (!Number.isSafeInteger(donationCents) || donationCents < 0) {
+    throw new Error("Invalid donation amount");
+  }
+
+  let totalCents = donationCents;
+
+  const items = products.map((product) => {
+    if (
+      !product.name.trim() ||
+      !Number.isSafeInteger(product.unitPriceCents) ||
+      product.unitPriceCents < 0 ||
+      !Number.isSafeInteger(product.quantity) ||
+      product.quantity <= 0
+    ) {
+      throw new Error("Invalid PayPal product");
+    }
+
+    totalCents += product.unitPriceCents * product.quantity;
+
+    return {
+      name: product.name.slice(0, 127),
+      quantity: String(product.quantity),
+      category: "PHYSICAL_GOODS",
+      unit_amount: {
+        currency_code: "USD",
+        value: centsToUsd(product.unitPriceCents),
+      },
+    };
+  });
+
   if (!Number.isSafeInteger(totalCents) || totalCents <= 0) {
-    throw new Error("PayPal order total must be positive");
+    throw new Error("Invalid PayPal order total");
+  }
+
+  if (donationCents > 0) {
+    items.push({
+      name: "DONATION",
+      quantity: "1",
+      category: "DONATION",
+      unit_amount: {
+        currency_code: "USD",
+        value: centsToUsd(donationCents),
+      },
+    });
   }
 
   const accessToken = await getAccessToken();
@@ -80,7 +134,14 @@ export async function createPayPalOrder(
             amount: {
               currency_code: "USD",
               value: centsToUsd(totalCents),
+              breakdown: {
+                item_total: {
+                  currency_code: "USD",
+                  value: centsToUsd(totalCents),
+                },
+              },
             },
+            items,
           },
         ],
       }),
@@ -89,7 +150,10 @@ export async function createPayPalOrder(
   );
 
   if (!response.ok) {
-    throw new Error(`PayPal order creation failed: ${response.status}`);
+    const details = await response.text();
+    throw new Error(
+      `PayPal order creation failed: ${response.status} ${details.slice(0, 500)}`,
+    );
   }
 
   const data: unknown = await response.json();
