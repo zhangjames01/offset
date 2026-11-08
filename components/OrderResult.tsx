@@ -30,15 +30,38 @@ export function PaymentSuccess({ r }: { r: Receipt }) {
   );
 }
 
-export function PaymentFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
+export function PaymentFailure(props: {
+  message: string;
+  /** true when PayPal approved but our capture failed: the buyer may already be charged. */
+  captureFailed: boolean;
+  busy: boolean;
+  onRetry: () => void;
+  onStartOver: () => void;
+}) {
   return (
     <section role="alert" className="rounded-lg border border-red-300 p-6 dark:border-red-900">
-      <h2 className="text-xl font-semibold">Payment didn&apos;t go through</h2>
-      <p className="mt-2 text-sm text-red-600">{message}</p>
-      <p className="mt-2 text-sm text-zinc-500">You weren&apos;t charged. Your cart is still saved.</p>
-      <button type="button" onClick={onRetry} className="mt-6 rounded-md bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">
-        Back to checkout
-      </button>
+      <h2 className="text-xl font-semibold">{props.captureFailed ? "We couldn't confirm your payment" : "Payment didn't go through"}</h2>
+      <p className="mt-2 text-sm text-red-600">{props.message}</p>
+      <p className="mt-2 text-sm text-zinc-500">
+        {props.captureFailed
+          ? "PayPal may already have taken the payment. Try again to confirm this same order. You won't be charged twice."
+          : "You weren't charged. Your cart is still saved."}
+      </p>
+      <div className="mt-6 flex items-center gap-4">
+        <button
+          type="button"
+          onClick={props.onRetry}
+          disabled={props.busy}
+          className="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          {props.busy ? "Trying again…" : props.captureFailed ? "Try again" : "Back to checkout"}
+        </button>
+        {props.captureFailed && (
+          <button type="button" onClick={props.onStartOver} className="text-sm text-zinc-500 underline">
+            Back to checkout
+          </button>
+        )}
+      </div>
     </section>
   );
 }

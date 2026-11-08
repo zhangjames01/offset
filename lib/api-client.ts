@@ -1,4 +1,4 @@
-// Client-side calls to the checkout routes (H4). Responses are zod-parsed; errors use the API's message.
+// Client-side calls to our API routes (classify, checkout). Responses are zod-parsed; errors use the API's message.
 import {
   ApiError,
   CaptureResponse,
