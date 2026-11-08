@@ -18,6 +18,8 @@ const any = (...res: RegExp[]) => (text: string) => res.some((r) => r.test(text)
 
 const FOOD = /\b(ramen|pizza|sushi|burgers?|tacos?|burritos?|noodles|curry|meals?|bowls?|dinner|lunch|breakfast|food|groceries)\b/;
 const DELIVERED = /\b(deliver(y|ed)?|courier)\b/;
+/** "flight", but not "flight simulator", "flight jacket", "flight case"… */
+const NOT_A_TRIP_FLIGHT = /\bflights?\b(?![ -]?(simulators?|sim|games?|jackets?|sticks?|controllers?|cases?|bags?|decks?|suits?)\b)/;
 
 /** Order matters: it breaks ties and picks the rule per line. */
 export const RULES: Rule[] = [
@@ -25,15 +27,16 @@ export const RULES: Rule[] = [
     category: "air_travel",
     label: "air travel",
     test: (text, raw) =>
-      any(/\bflights?\b/, /\bair ?fare\b/, /\bairlines?\b/, /\bplane tickets?\b/, /\b(first|business) class\b/)(text) ||
-      /\b[A-Z]{3} ?(→|->|to) ?[A-Z]{3}\b/.test(raw), // airport codes, e.g. "JFK → LAX"
+      any(NOT_A_TRIP_FLIGHT, /\bair ?fare\b/, /\bairlines?\b/, /\bplane tickets?\b/, /\b(first|business) class\b/)(text) ||
+      // Airport codes need an arrow ("JFK → LAX"); with "to", "USB to DVI" would match.
+      /\b[A-Z]{3} ?(→|->) ?[A-Z]{3}\b/.test(raw),
   },
   {
     category: "fast_fashion",
     label: "fast fashion",
     test: any(
       /\bfast[- ]fashion\b/,
-      /\b(t-?shirts?|tees?|tank tops?|crop tops?|hoodies?|sweaters?|dress(es)?|jeans|leggings|apparel|clothing|blouses?)\b/,
+      /\b(t-?shirts?|tees?|tank tops?|crop tops?|hoodies?|sweaters?|jackets?|coats?|skirts?|dress(es)?|jeans|leggings|apparel|clothing|blouses?)\b/,
     ),
   },
   {

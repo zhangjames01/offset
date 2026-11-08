@@ -41,6 +41,13 @@ describe("rulesClassify", () => {
     expect(one("Furniture delivery", "Sofa delivered to your door").category).toBe("general"); // no food
     expect(one("Graphic tee 3-pack", "").category).toBe("fast_fashion"); // "3-pack" isn't packaging
     expect(one("Snack box", "Snacks for the office").category).toBe("general"); // no delivery
+    // From review (#7): airport codes need an arrow; "flight" + a product noun isn't a trip.
+    expect(one("USB to DVI adapter").category).toBe("general");
+    expect(one("Flight simulator game").category).toBe("general");
+    expect(one("Flight jacket", "Bomber jacket").category).toBe("fast_fashion");
+    expect(one("Flight case", "Hard case for DJ gear").category).toBe("general");
+    expect(one("Two flights to Denver").category).toBe("air_travel");
+    expect(one("Trip", "SFO -> SEA, one way").category).toBe("air_travel");
   });
 
   test("mixed cart: the category with the most dollars wins", () => {

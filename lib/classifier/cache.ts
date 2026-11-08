@@ -21,12 +21,13 @@ export type ClassificationCache = {
 };
 
 /**
- * Hash of exactly what the LLM sees: name, description, quantity and trusted price
- * per line. Line order is ignored. Pass the cart AFTER catalog re-pricing.
+ * Hash of what the LLM sees per line: name, description, trusted unit price and quantity
+ * (it gets the line total). Not productId: the LLM never sees it. Line order is ignored.
+ * Pass the cart AFTER catalog re-pricing.
  */
 export function cartKey(cart: Pick<ClassifyRequest, "items">): string {
   const lines = cart.items
-    .map((i) => [i.productId, i.name, i.description, i.unitPriceCents, i.quantity] as const)
+    .map((i) => [i.name, i.description, i.unitPriceCents, i.quantity] as const)
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   return createHash("sha256").update(JSON.stringify(lines)).digest("hex");
 }
