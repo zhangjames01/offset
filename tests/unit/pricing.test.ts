@@ -26,6 +26,7 @@ describe("price()", () => {
       causeId: m.causeId,
       suggestedDonationCents: m.suggestedDonationCents,
       donationCents: m.donationCents,
+      maxDonationCents: m.maxDonationCents,
       rateRule: m.rateRule,
       adjustment: m.adjustment,
     });
@@ -33,12 +34,20 @@ describe("price()", () => {
 
   test("monthly cap binds when less is left than the per-order max", () => {
     const got = price(input({ category: "air_travel", subtotalCents: 24900, monthToDateCents: 1300 }));
-    expect(got).toMatchObject({ suggestedDonationCents: 747, donationCents: 200, adjustment: "monthly_cap" });
+    expect(got).toMatchObject({ suggestedDonationCents: 747, donationCents: 200, maxDonationCents: 200, adjustment: "monthly_cap" });
+  });
+
+  test("maxDonationCents bounds edits even when no cap changed the suggestion", () => {
+    // Demo order 3: $15/mo cap, $11.50 given so far → $3.50 left; the tee's 50¢ fits, so no adjustment.
+    const got = price(input({ category: "fast_fashion", subtotalCents: 2499, monthToDateCents: 1150 }));
+    expect(got).toMatchObject({ donationCents: 50, adjustment: null, maxDonationCents: 350 });
+    // Opt-outs only change the suggestion, not the bound.
+    expect(price(input({ category: "single_use_packaging" })).maxDonationCents).toBe(500);
   });
 
   test("monthly cap already spent → 0", () => {
     const got = price(input({ category: "food_delivery", monthToDateCents: 2000 }));
-    expect(got).toMatchObject({ donationCents: 0, adjustment: "monthly_cap" });
+    expect(got).toMatchObject({ donationCents: 0, maxDonationCents: 0, adjustment: "monthly_cap" });
   });
 
   test("low confidence moves to general at 100¢, or 0 if general is opted out", () => {

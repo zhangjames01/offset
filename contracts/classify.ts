@@ -52,6 +52,12 @@ export const ClassifyResponse = z.object({
   suggestedDonationCents: Cents,
   /** Amount after caps / opt-outs / low-confidence rules. */
   donationCents: Cents,
+  /**
+   * Highest donation the user may set for this order (the edit bound):
+   * min(perOrderMaxCents, monthlyCapCents − month-to-date giving). 0 = nothing can be added.
+   * Opt-outs only change the suggestion, not this bound. create-order re-checks it.
+   */
+  maxDonationCents: Cents,
   rateRule: z.string().min(1),
   reason: z.string().min(1),
   adjustment: Adjustment.nullable(),
