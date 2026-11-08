@@ -1,17 +1,6 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  test,
-  vi,
-} from "vitest";
-
-import {
-  centsToUsd,
-  createPayPalOrder,
-} from "@/lib/paypal/client";
+import { centsToUsd, createPayPalOrder } from "@/lib/paypal/client";
 
 describe("PayPal amount formatting", () => {
   test("converts cents to USD", () => {
@@ -60,10 +49,7 @@ describe("PayPal order line items", () => {
   });
 
   function getOrderRequest() {
-    const [url, options] = fetchMock.mock.calls[1] as [
-      string,
-      RequestInit,
-    ];
+    const [url, options] = fetchMock.mock.calls[1] as [string, RequestInit];
 
     const payload = JSON.parse(options.body as string);
 
@@ -99,9 +85,8 @@ describe("PayPal order line items", () => {
         },
       },
       {
-        name: "DONATION",
+        name: "Optional charitable contribution",
         quantity: "1",
-        category: "DONATION",
         unit_amount: {
           currency_code: "USD",
           value: "2.00",
@@ -133,8 +118,7 @@ describe("PayPal order line items", () => {
 
     // 2500 * 2 + 300 + 200 = 5500 cents
     expect(purchaseUnit.amount.value).toBe("55.00");
-    expect(purchaseUnit.amount.breakdown.item_total.value)
-      .toBe("55.00");
+    expect(purchaseUnit.amount.breakdown.item_total.value).toBe("55.00");
     expect(purchaseUnit.amount.currency_code).toBe("USD");
   });
 
@@ -155,11 +139,9 @@ describe("PayPal order line items", () => {
     const purchaseUnit = payload.purchase_units[0];
 
     expect(purchaseUnit.items).toHaveLength(1);
-    expect(purchaseUnit.items[0].category)
-      .toBe("PHYSICAL_GOODS");
+    expect(purchaseUnit.items[0].category).toBe("PHYSICAL_GOODS");
     expect(purchaseUnit.amount.value).toBe("25.00");
-    expect(purchaseUnit.amount.breakdown.item_total.value)
-      .toBe("25.00");
+    expect(purchaseUnit.amount.breakdown.item_total.value).toBe("25.00");
   });
 
   test("uses localOrderId as PayPal-Request-Id", async () => {
@@ -178,9 +160,7 @@ describe("PayPal order line items", () => {
     const { options } = getOrderRequest();
 
     expect(
-      (options.headers as Record<string, string>)[
-        "PayPal-Request-Id"
-      ],
+      (options.headers as Record<string, string>)["PayPal-Request-Id"],
     ).toBe("ord_stable_retry_key");
   });
 

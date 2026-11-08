@@ -59,6 +59,16 @@ export type PayPalOrderItem = {
   quantity: number;
 };
 
+type PayPalLineItem = {
+  name: string;
+  quantity: string;
+  category?: "PHYSICAL_GOODS" | "DIGITAL_GOODS" | "DONATION";
+  unit_amount: {
+    currency_code: "USD";
+    value: string;
+  };
+};
+
 export async function createPayPalOrder(
   products: PayPalOrderItem[],
   donationCents: number,
@@ -74,7 +84,7 @@ export async function createPayPalOrder(
 
   let totalCents = donationCents;
 
-  const items = products.map((product) => {
+  const items: PayPalLineItem[] = products.map((product) => {
     if (
       !product.name.trim() ||
       !Number.isSafeInteger(product.unitPriceCents) ||
@@ -102,17 +112,16 @@ export async function createPayPalOrder(
     throw new Error("Invalid PayPal order total");
   }
 
-  if (donationCents > 0) {
-    items.push({
-      name: "DONATION",
-      quantity: "1",
-      category: "DONATION",
-      unit_amount: {
-        currency_code: "USD",
-        value: centsToUsd(donationCents),
-      },
-    });
-  }
+if (donationCents > 0) {
+  items.push({
+    name: "Optional charitable contribution",
+    quantity: "1",
+    unit_amount: {
+      currency_code: "USD",
+      value: centsToUsd(donationCents),
+    },
+  });
+}
 
   const accessToken = await getAccessToken();
 
