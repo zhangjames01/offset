@@ -16,7 +16,7 @@ type Result = { key: string } & ({ ok: true; data: ClassifyResponse } | { ok: fa
 type PayConfig = { mode: "mock" | "sandbox"; clientId: string };
 type ReceiptDetails = Omit<Receipt, "localOrderId" | "ledgerEntryId">;
 /** orderId: capture failed on an approved order, so "Try again" re-captures it instead of starting a new one. */
-type Failure = { message: string; orderId: string | null; details: ReceiptDetails };
+type Failure = { message: string; orderId: string | null; details: ReceiptDetails; retries: number };
 
 export function Checkout({ pay }: { pay: PayConfig }) {
   const { cart, ready, dispatch } = useCart();
@@ -70,6 +70,10 @@ export function Checkout({ pay }: { pay: PayConfig }) {
   function retryFailure(f: Failure) {
     if (!f.orderId) {
       // create-order failed: re-classify too, in case the limits changed (e.g. monthly room).
+      // Drop the old card and decision so nothing stale can be paid while that runs,
+      // and an edited amount that broke the new limit resets to the new suggestion.
+      setResult(null);
+      setDecision(null);
       setFailure(null);
       setRetry((n) => n + 1);
       return;
@@ -77,7 +81,9 @@ export function Checkout({ pay }: { pay: PayConfig }) {
     setRetryingCapture(true);
     captureOrder(f.orderId) // capture is idempotent, so this can't charge twice
       .then((r) => finish(r, f.details))
-      .catch((e: unknown) => setFailure({ ...f, message: e instanceof Error ? e.message : "Capture failed" }))
+      .catch((e: unknown) =>
+        setFailure({ ...f, message: e instanceof Error ? e.message : "Capture failed", retries: f.retries + 1 }),
+      )
       .finally(() => setRetryingCapture(false));
   }
 
@@ -87,6 +93,7 @@ export function Checkout({ pay }: { pay: PayConfig }) {
         <PaymentFailure
           message={failure.message}
           captureFailed={failure.orderId !== null}
+          canStartOver={failure.orderId === null || failure.retries > 0}
           busy={retryingCapture}
           onRetry={() => retryFailure(failure)}
           onStartOver={() => setFailure(null)}
@@ -169,7 +176,7 @@ export function Checkout({ pay }: { pay: PayConfig }) {
               clientId={pay.clientId}
               request={classification && d ? toCreateOrderRequest(cart, classification, d) : null}
               onPaid={(r) => finish(r, details)}
-              onFailed={(message, orderId) => setFailure({ message, orderId: orderId ?? null, details })}
+              onFailed={(message, orderId) => setFailure({ message, orderId: orderId ?? null, details, retries: 0 })}
             />
           </div>
           <BackLink />

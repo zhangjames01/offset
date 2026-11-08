@@ -35,6 +35,8 @@ export function PaymentFailure(props: {
   /** true when PayPal approved but our capture failed: the buyer may already be charged. */
   captureFailed: boolean;
   busy: boolean;
+  /** For a failed capture, only offered after "Try again" has failed once: starting over drops the approved order. */
+  canStartOver: boolean;
   onRetry: () => void;
   onStartOver: () => void;
 }) {
@@ -56,12 +58,17 @@ export function PaymentFailure(props: {
         >
           {props.busy ? "Trying again…" : props.captureFailed ? "Try again" : "Back to checkout"}
         </button>
-        {props.captureFailed && (
+        {props.captureFailed && props.canStartOver && (
           <button type="button" onClick={props.onStartOver} className="text-sm text-zinc-500 underline">
-            Back to checkout
+            Cancel and start a new order
           </button>
         )}
       </div>
+      {props.captureFailed && props.canStartOver && (
+        <p className="mt-3 text-xs text-zinc-500">
+          Only start a new order if your PayPal account shows no payment for this one, or you may be charged twice.
+        </p>
+      )}
     </section>
   );
 }
