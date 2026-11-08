@@ -119,3 +119,37 @@ model PayoutBatchItem {
 
   @@unique([payoutBatchId, causeId])
 }
+
+
+model CheckoutAttempt {
+  id            String   @id @default(cuid())
+  userId        String
+  cartId        String
+  requestHash   String
+  status        String   @default("PENDING")
+  paypalOrderId String?  @unique
+  localOrderId  String   @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, cartId])
+}
+
+
+
+model ClassificationApproval {
+  id                     String   @id
+  userId                 String
+  cartId                 String
+  cartHash               String
+  category               String
+  causeId                String
+  suggestedDonationCents Int
+  donationCents          Int
+  approvedDonationCents  Int?
+  userAction             String?
+  source                 String
+  createdAt              DateTime @default(now())
+
+  @@index([userId, cartId])
+}

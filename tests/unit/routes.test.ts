@@ -15,6 +15,14 @@ import { resetStore } from "@/lib/mock-store";
 // connection() needs a Next request scope; in unit tests it's a no-op.
 vi.mock("next/server", () => ({ connection: async () => {} }));
 
+vi.mock("@/lib/db", () => ({
+  getPrisma: () => ({
+    classificationApproval: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
+  }),
+}));
+
 import { GET as getCatalog } from "@/app/api/catalog/route";
 import { POST as classify } from "@/app/api/classify/route";
 import { GET as getPrefs, PUT as putPrefs } from "@/app/api/preferences/route";
@@ -37,7 +45,7 @@ const flightCart = {
   currency: "USD",
   userId: "demo-user",
   subtotalCents: 24900,
-  items: [{ productId: "flight-jfk-lax", name: "JFK → LAX", description: "flight", unitPriceCents: 24900, quantity: 1 }],
+  items: [{ productId: "flight-jfk-lax", name: "JFK â†’ LAX", description: "flight", unitPriceCents: 24900, quantity: 1 }],
 };
 
 const order = (donationCents: number, userAction = "accepted") => ({
@@ -75,7 +83,7 @@ describe("mock mode routes", () => {
     await expectError(await classify(post("not json")), 400, "VALIDATION_ERROR");
   });
 
-  test("checkout → capture → ledger → payout flow", async () => {
+  test("checkout â†’ capture â†’ ledger â†’ payout flow", async () => {
     const created = CreateOrderResponse.parse(await (await createOrder(post(order(500)))).json());
 
     const cap1 = CaptureResponse.parse(await (await capture(post({ paypalOrderId: created.paypalOrderId }))).json());
@@ -160,17 +168,41 @@ describe("mock mode routes", () => {
   });
 });
 
-describe("real modes that aren't built yet return 501", () => {
+
+describe("real mode behavior", () => {
   test("LLM_MODE=live (preferences parse, A4) and LLM_MODE=rules (A3)", async () => {
     vi.stubEnv("LLM_MODE", "live");
-    await expectError(await parsePrefs(post({ rawText: "x" })), 501, "NOT_IMPLEMENTED");
+    await expectError(
+      await parsePrefs(post({ rawText: "x" })),
+      501,
+      "NOT_IMPLEMENTED",
+    );
+
     vi.stubEnv("LLM_MODE", "rules");
-    await expectError(await classify(post(flightCart)), 501, "NOT_IMPLEMENTED");
+    await expectError(
+      await classify(post(flightCart)),
+      501,
+      "NOT_IMPLEMENTED",
+    );
   });
 
-  test("PAYPAL_MODE=sandbox", async () => {
+  test("PAYPAL_MODE=sandbox rejects unknown classifications", async () => {
     vi.stubEnv("PAYPAL_MODE", "sandbox");
-    await expectError(await createOrder(post(order(100))), 501, "NOT_IMPLEMENTED");
-    await expectError(await capture(post({ paypalOrderId: "X" })), 501, "NOT_IMPLEMENTED");
+
+    await expectError(
+      await createOrder(post(order(100))),
+      400,
+      "VALIDATION_ERROR",
+    );
+  });
+
+  test("PAYPAL_MODE=sandbox capture remains unimplemented until J4", async () => {
+    vi.stubEnv("PAYPAL_MODE", "sandbox");
+
+    await expectError(
+      await capture(post({ paypalOrderId: "X" })),
+      501,
+      "NOT_IMPLEMENTED",
+    );
   });
 });

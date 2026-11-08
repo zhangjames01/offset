@@ -4,6 +4,8 @@
  * ClassifyStore, which reads the mock store today and Jay's Prisma tables once J2 lands.
  * A3 adds the rules fallback + cache around this function.
  */
+import { getPrisma } from "@/lib/db";
+import { hashCart } from "@/lib/checkout/cart-hash";
 import { ClassifyResponse, type ClassifyRequest, type Preferences } from "@/contracts";
 import { mockCatalog, mockCauses } from "@/lib/mocks";
 import { nextId, store } from "@/lib/mock-store";
@@ -50,8 +52,37 @@ export async function classify(cart: ClassifyRequest, deps: ClassifyDeps): Promi
     reason: llm.reason,
     source: "llm",
   });
-  await deps.store.save(result);
-  return result;
+await deps.store.save(result);
+
+// Save the classification in Neon for J3 Sandbox checkout.
+if (process.env.PAYPAL_MODE === "sandbox") {
+  const prisma = getPrisma();
+
+  // Use the server-verified prices calculated earlier.
+  const cartHash = hashCart(
+    items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      priceCents: item.unitPriceCents,
+    })),
+  );
+
+  await prisma.classificationApproval.create({
+    data: {
+      id: result.classificationId,
+      userId: cart.userId,
+      cartId: cart.cartId,
+      cartHash,
+      category: result.category,
+      causeId: result.causeId,
+      suggestedDonationCents: result.suggestedDonationCents,
+      donationCents: result.donationCents,
+      source: result.source,
+    },
+  });
+}
+
+return result;
 }
 
 const catalogPrice = new Map(mockCatalog.products.map((p) => [p.id, p.priceCents]));
