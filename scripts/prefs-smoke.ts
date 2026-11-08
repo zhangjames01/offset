@@ -38,12 +38,17 @@ async function main() {
       const p = toPreferences(c.rawText, await llm(c.rawText), "demo-user", new Date());
       latencies.push(Date.now() - started);
       const e = c.expected;
+      // Ambiguous texts may list other acceptable cause sets; capsAtMost passes anything at or below expected.
+      const causeSets = [e.causes, ...(("acceptCauses" in c ? c.acceptCauses : undefined) ?? [])];
+      const atMost = "capsAtMost" in c && c.capsAtMost === true;
+      const capOk = (got: number, want: number) => (atMost ? got <= want : got === want);
       const misses = [
-        !sameSet(p.causes, e.causes) && `causes ${JSON.stringify(p.causes)} ≠ ${JSON.stringify(e.causes)}`,
+        !causeSets.some((s) => sameSet(p.causes, s)) &&
+          `causes ${JSON.stringify(p.causes)} ≠ ${causeSets.map((s) => JSON.stringify(s)).join(" or ")}`,
         !sameSet(p.optOutCategories, e.optOutCategories) &&
           `optOuts ${JSON.stringify(p.optOutCategories)} ≠ ${JSON.stringify(e.optOutCategories)}`,
-        p.monthlyCapCents !== e.monthlyCapCents && `monthly ${p.monthlyCapCents} ≠ ${e.monthlyCapCents}`,
-        p.perOrderMaxCents !== e.perOrderMaxCents && `perOrder ${p.perOrderMaxCents} ≠ ${e.perOrderMaxCents}`,
+        !capOk(p.monthlyCapCents, e.monthlyCapCents) && `monthly ${p.monthlyCapCents} ${atMost ? ">" : "≠"} ${e.monthlyCapCents}`,
+        !capOk(p.perOrderMaxCents, e.perOrderMaxCents) && `perOrder ${p.perOrderMaxCents} ${atMost ? ">" : "≠"} ${e.perOrderMaxCents}`,
       ].filter(Boolean);
       if (misses.length === 0) passed++;
       console.log(`${misses.length ? "MISS" : "ok  "}  ${c.id.padEnd(32)} ${Date.now() - started}ms  ${misses.join("; ")}`);
