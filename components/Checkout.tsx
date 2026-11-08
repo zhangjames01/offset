@@ -28,6 +28,17 @@ export function Checkout({ pay }: { pay: PayConfig }) {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
+  // Next keeps this page mounted (hidden) when you navigate away, so a finished payment's
+  // screen would still show on the next visit. Once the cart has items again, drop it.
+  const [seenCart, setSeenCart] = useState(cart);
+  if (cart !== seenCart) {
+    setSeenCart(cart);
+    if (cart.lines.length > 0) {
+      setReceipt(null);
+      setFailure(null);
+    }
+  }
+
   useEffect(() => {
     if (!ready || !request) return;
     let cancelled = false;
