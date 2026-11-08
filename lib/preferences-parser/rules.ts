@@ -5,11 +5,14 @@
  * Never throws.
  *
  * How it reads the text:
- *   1. Split into clauses on sentence punctuation, commas and "but"/"however".
+ *   1. Split into clauses on sentence punctuation, commas, "but"/"however", and an "and"
+ *      followed by a negation ("climate and no flights" → "climate" | "no flights").
  *   2. A clause with a negation ("skip", "no", "don't", "except"…) turns its topics into
  *      opt-out categories; any other clause turns them into causes.
  *   3. Dollar amounts ("$15", "15 bucks", "50 cents", "$10–20") are tagged per-order or
  *      per-period from the words right after them (then before them). Untagged = monthly.
+ *      A bare number counts only between a limit word and a unit ("max 15 a month",
+ *      "limit 3 per order"), so "3 flights a month" stays a count, not money.
  *      Several amounts of the same kind → the lowest wins.
  */
 import type { Category, CauseId } from "@/contracts";
@@ -49,6 +52,8 @@ const PERIODS: [Period, RegExp][] = [
 ];
 
 const NUM = String.raw`(\d+(?:\.\d{1,2})?)`;
+/** The unit must come right after a bare number: "15 a month", "3 per order", "100 yearly". */
+const BARE_UNIT = String.raw`\s*(?:(?:a|an|per|each|every|\/)\s*(?:months?|mo|weeks?|wk|days?|years?|yr|orders?|purchases?|transactions?|checkouts?|items?)\b|(?:monthly|weekly|daily|yearly|annually)\b)`;
 const MONEY_PATTERNS: { re: RegExp; read: (m: RegExpExecArray) => StatedLimit }[] = [
   // Ranges: "$10-20", "$10 to $20", "between $10 and $20", "10-20 dollars"
   {
@@ -63,6 +68,11 @@ const MONEY_PATTERNS: { re: RegExp; read: (m: RegExpExecArray) => StatedLimit }[
   { re: new RegExp(String.raw`\$\s*${NUM}`, "g"), read: (m) => one(Number(m[1])) },
   { re: new RegExp(String.raw`\b${NUM}\s*(?:dollars|bucks|usd)\b`, "g"), read: (m) => one(Number(m[1])) },
   { re: new RegExp(String.raw`\b${NUM}\s*(?:cents|¢)`, "g"), read: (m) => one(Number(m[1]) / 100) },
+  // Bare numbers: only "max 15 a month", "cap of 20 per month", "limit 3 per order", "budget 100 yearly".
+  {
+    re: new RegExp(String.raw`\b(?:max|maximum|cap|limit|up to|at most|budget)(?:\s+(?:of|is|at|to))?\s+${NUM}(?=${BARE_UNIT})`, "g"),
+    read: (m) => one(Number(m[1])),
+  },
 ];
 
 const one = (d: number): StatedLimit => ({ lowDollars: d, highDollars: d });
@@ -113,7 +123,7 @@ export function normalize(rawText: string): string {
 
 export function rulesExtract(rawText: string): Extracted {
   const clauses = normalize(rawText)
-    .split(/[.;!?\n,]|\bbut\b|\bhowever\b/)
+    .split(/[.;!?\n,]|\bbut\b|\bhowever\b|\band\b(?=\s+(?:no|not|never|skip|without|don'?t|do not|except|avoid|exclude)\b)/)
     .map((c) => c.trim())
     .filter(Boolean);
 

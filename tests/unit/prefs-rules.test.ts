@@ -63,8 +63,50 @@ describe("rulesExtract()", () => {
     expect(rulesExtract("$3 per order, or $2 per purchase").perOrder).toMatchObject({ lowDollars: 2 });
   });
 
-  test("numbers without a currency word are not money", () => {
+  test("'and' + a negation starts a new clause (PR #10 review)", () => {
+    expect(rulesExtract("climate and no flights")).toMatchObject({ causes: ["carbon_removal"], optOutCategories: ["air_travel"] });
+    expect(rulesExtract("I love oceans and not packaging")).toMatchObject({
+      causes: ["ocean_plastic"],
+      optOutCategories: ["single_use_packaging"],
+    });
+    expect(rulesExtract("skip packaging and no flights")).toMatchObject({
+      causes: [],
+      optOutCategories: ["single_use_packaging", "air_travel"],
+    });
+    // "and no more than" is a limit, not an opt-out: the clause stays whole.
+    expect(rulesExtract("climate and no more than $5 a month")).toMatchObject({
+      causes: ["carbon_removal"],
+      optOutCategories: [],
+      budget: { lowDollars: 5, period: "month" },
+    });
+  });
+
+  test("bare numbers count between a limit word and a unit (PR #10 review)", () => {
+    expect(rulesExtract("max 15 a month").budget).toEqual({ lowDollars: 15, highDollars: 15, period: "month" });
+    expect(rulesExtract("no more than 15 a month").budget).toMatchObject({ lowDollars: 15, period: "month" });
+    expect(rulesExtract("cap of 20 per month, limit 3 per order")).toMatchObject({
+      budget: { lowDollars: 20, period: "month" },
+      perOrder: { lowDollars: 3 },
+    });
+    expect(rulesExtract("budget 100 yearly").budget).toMatchObject({ lowDollars: 100, period: "year" });
+    expect(rulesExtract("max $15 a month, limit 2 per order")).toMatchObject({
+      budget: { lowDollars: 15 },
+      perOrder: { lowDollars: 2 },
+    });
+  });
+
+  test("numbers without a currency word, limit word and unit are not money", () => {
     expect(rulesExtract("3 flights a month, I care about climate").budget).toBeNull();
+    expect(rulesExtract("limit 3 flights a month").budget).toBeNull();
+    expect(rulesExtract("max 15").budget).toBeNull();
+    expect(rulesExtract("I fly 2 times a month, max").budget).toBeNull();
+  });
+
+  test("Hua's end-to-end text from the PR #10 review", () => {
+    const p = parse("Oceans and hunger please. $5-10 a week, never more than $2 an order, no fast fashion.");
+    expect(sorted(p.causes)).toEqual(["food_bank", "ocean_plastic"]);
+    expect(p.optOutCategories).toEqual(["fast_fashion"]);
+    expect([p.monthlyCapCents, p.perOrderMaxCents]).toEqual([2000, 200]);
   });
 
   test("text with no causes, opt-outs or amounts", () => {
