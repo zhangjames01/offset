@@ -1,7 +1,7 @@
-// classify() + POST /api/classify in LLM_MODE=live (A2), with a fake LLM. No network.
+// classify() + POST /api/classify in LLM_MODE=live / rules (A2, A3), with a fake LLM. No network.
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { ApiError, ClassifyResponse, type ClassifyRequest, type LlmClassification } from "@/contracts";
-import { classify, mockClassifyStore } from "@/lib/classifier";
+import { ClassifyResponse, type ClassifyRequest, type LlmClassification } from "@/contracts";
+import { classify, mockClassifyStore, resetClassifyGuards } from "@/lib/classifier";
 import { LlmError } from "@/lib/classifier/llm";
 import { mockClassifyByProduct } from "@/lib/mocks";
 import { resetStore, store } from "@/lib/mock-store";
@@ -25,7 +25,10 @@ const mockLikeLlm = async (cart: ClassifyRequest): Promise<LlmClassification> =>
   return { category: m.category, confidence: m.confidence, reason: m.reason };
 };
 
-beforeEach(() => resetStore());
+beforeEach(() => {
+  resetStore();
+  resetClassifyGuards();
+});
 afterEach(() => vi.unstubAllEnvs());
 
 describe("classify()", () => {
@@ -86,26 +89,91 @@ describe("POST /api/classify, LLM_MODE=live", () => {
     expect(body.classificationId).toMatch(/^cls_/);
   });
 
-  test.each([
-    ["invalid_output", 502],
-    ["timeout", 502],
-    ["rate_limited", 502],
-    ["not_configured", 503],
-  ] as const)("LlmError %s → CLASSIFY_FAILED %i, details logged not returned", async (kind, status) => {
+  test.each(["invalid_output", "timeout", "rate_limited", "api_error", "not_configured"] as const)(
+    "LlmError %s → rules fallback (200, source rules), details logged not returned",
+    async (kind) => {
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      fakeLlm = async () => {
+        throw new LlmError(kind, "secret detail: invalid x-api-key");
+      };
+      const res = await post(flightCart);
+      expect(res.status).toBe(200);
+      const raw = await res.text();
+      const body = ClassifyResponse.parse(JSON.parse(raw));
+      expect(body).toMatchObject({ category: "air_travel", donationCents: 500, source: "rules" });
+      expect(raw).not.toContain("secret detail");
+      expect(log).toHaveBeenCalledWith(`[classify] ${kind}: secret detail: invalid x-api-key → rules fallback`);
+      log.mockRestore();
+    },
+  );
+
+  test("same cart again → source cache, no second LLM call, fresh id", async () => {
+    let calls = 0;
+    fakeLlm = async (c) => (calls++, mockLikeLlm(c));
+    const first = ClassifyResponse.parse(await (await post(flightCart)).json());
+    const second = ClassifyResponse.parse(await (await post({ ...flightCart, cartId: "other" })).json());
+    expect(calls).toBe(1);
+    expect(first.source).toBe("llm");
+    expect(second).toMatchObject({ ...first, classificationId: second.classificationId, source: "cache" });
+    expect(second.classificationId).not.toBe(first.classificationId);
+  });
+
+  test("failed LLM results are not cached: the next call tries the LLM again", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     fakeLlm = async () => {
-      throw new LlmError(kind, "secret detail: invalid x-api-key");
+      throw new LlmError("timeout", "slow");
     };
-    const res = await post(flightCart);
-    expect(res.status).toBe(status);
-    const { error } = ApiError.parse(await res.json());
-    expect(error).toEqual({ code: "CLASSIFY_FAILED", message: "Unable to classify your purchase right now." });
-    expect(log).toHaveBeenCalledWith(`[classify] ${kind}: secret detail: invalid x-api-key`);
+    expect(ClassifyResponse.parse(await (await post(flightCart)).json()).source).toBe("rules");
+    fakeLlm = mockLikeLlm;
+    expect(ClassifyResponse.parse(await (await post(flightCart)).json()).source).toBe("llm");
     log.mockRestore();
+  });
+
+  test("over 20 LLM calls per IP per minute → rules; cache hits don't count; other IPs unaffected", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let calls = 0;
+    fakeLlm = async (c) => (calls++, mockLikeLlm(c));
+    const from = (ip: string, n: number) =>
+      POST(
+        new Request("http://test/api/classify", {
+          method: "POST",
+          headers: { "x-forwarded-for": `${ip}, 10.0.0.1` },
+          // A different quantity each time → a different cart → a cache miss.
+          body: JSON.stringify({ ...flightCart, items: [{ ...flightCart.items[0], quantity: n }] }),
+        }),
+      ).then(async (r) => ClassifyResponse.parse(await r.json()).source);
+
+    for (let n = 1; n <= 20; n++) expect(await from("1.1.1.1", n)).toBe("llm");
+    expect(await from("1.1.1.1", 21)).toBe("rules");
+    expect(await from("1.1.1.1", 1)).toBe("cache"); // still served from cache
+    expect(await from("2.2.2.2", 21)).toBe("llm");
+    expect(calls).toBe(21);
+    warn.mockRestore();
   });
 
   test("bad body is still VALIDATION_ERROR", async () => {
     const res = await post({ cartId: 1 });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/classify, LLM_MODE=rules", () => {
+  beforeEach(() => vi.stubEnv("LLM_MODE", "rules"));
+
+  test("classifies every demo cart without the LLM, same amounts as the canned mocks", async () => {
+    fakeLlm = async () => {
+      throw new Error("LLM must not be called in rules mode");
+    };
+    for (const { request } of carts.slice(0, 6)) {
+      const res = await POST(
+        new Request("http://test/api/classify", { method: "POST", body: JSON.stringify(request) }),
+      );
+      expect(res.status).toBe(200);
+      const body = ClassifyResponse.parse(await res.json());
+      const m = mockClassifyByProduct[request.items[0].productId];
+      const pick = (r: ClassifyResponse) => [r.category, r.causeId, r.suggestedDonationCents, r.donationCents, r.maxDonationCents, r.rateRule, r.adjustment];
+      expect(pick(body)).toEqual(pick(m));
+      expect(body.source).toBe("rules");
+    }
   });
 });

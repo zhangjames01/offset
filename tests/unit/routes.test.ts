@@ -161,11 +161,9 @@ describe("mock mode routes", () => {
 });
 
 describe("real modes that aren't built yet return 501", () => {
-  test("LLM_MODE=live (preferences parse, A4) and LLM_MODE=rules (A3)", async () => {
+  test("LLM_MODE=live (preferences parse, A4)", async () => {
     vi.stubEnv("LLM_MODE", "live");
     await expectError(await parsePrefs(post({ rawText: "x" })), 501, "NOT_IMPLEMENTED");
-    vi.stubEnv("LLM_MODE", "rules");
-    await expectError(await classify(post(flightCart)), 501, "NOT_IMPLEMENTED");
   });
 
   test("PAYPAL_MODE=sandbox", async () => {
