@@ -77,8 +77,9 @@ function SandboxButton({ request, onPaid, onFailed }: Pick<Props, "request" | "o
   if (loadingStatus === INSTANCE_LOADING_STATE.REJECTED) {
     return (
       <p role="alert" className="text-sm text-red-600">
-        PayPal couldn&apos;t load{error?.message ? `: ${error.message.replace(/\.+$/, "")}` : ""}. Check your connection and
-        NEXT_PUBLIC_PAYPAL_CLIENT_ID, then reload.
+        {process.env.NODE_ENV === "production"
+          ? "PayPal couldn't load. Please reload the page and try again."
+          : `PayPal couldn't load${error?.message ? `: ${error.message.replace(/\.+$/, "")}` : ""}. Check your connection and NEXT_PUBLIC_PAYPAL_CLIENT_ID, then reload.`}
       </p>
     );
   }

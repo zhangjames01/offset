@@ -9,6 +9,17 @@ export function defaultDecision(c: ClassifyResponse): Decision {
 }
 
 /**
+ * Carries the buyer's choice over to a fresh classification of the same cart (e.g. after a
+ * create-order failure). A removed donation stays removed, an edit stays if it still fits the
+ * new limit, and anything else takes the new suggestion.
+ */
+export function fitDecision(d: Decision, c: ClassifyResponse): Decision {
+  if (d.action === "removed") return d;
+  if (d.action === "edited" && d.cents <= c.maxDonationCents) return d;
+  return defaultDecision(c);
+}
+
+/**
  * Highest amount the edit input allows: the classifier's maxDonationCents, i.e.
  * min(per-order max, what's left of the monthly cap). create-order re-checks it, so this is UX only.
  */

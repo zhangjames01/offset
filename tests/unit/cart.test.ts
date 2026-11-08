@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ClassifyRequest } from "@/contracts";
-import { cartReducer, emptyCart, itemCount, MAX_QTY, subtotalCents, toClassifyRequest } from "@/lib/cart";
+import { cartReducer, emptyCart, itemCount, MAX_QTY, removePaid, subtotalCents, toClassifyRequest } from "@/lib/cart";
 import { mockCatalog } from "@/lib/mocks";
 
 const [flight, tee] = mockCatalog.products;
@@ -21,6 +21,15 @@ describe("cart", () => {
     expect(c.lines[0].quantity).toBe(MAX_QTY);
     c = cartReducer(c, { type: "setQty", productId: tee.id, quantity: 0 });
     expect(c.lines).toHaveLength(0);
+  });
+
+  it("removePaid keeps items added after the order, under a new id", () => {
+    let c = cartReducer(emptyCart("cart_t"), { type: "add", product: flight });
+    c = cartReducer(c, { type: "add", product: tee });
+    c = cartReducer(c, { type: "add", product: tee });
+    const left = removePaid(c, [{ productId: flight.id, quantity: 1 }, { productId: tee.id, quantity: 1 }]);
+    expect(left.lines.map((l) => [l.product.id, l.quantity])).toEqual([[tee.id, 1]]);
+    expect(left.id).not.toBe("cart_t");
   });
 
   it("clear issues a new cart id", () => {

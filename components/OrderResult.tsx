@@ -9,7 +9,8 @@ export type Receipt = {
   causeName: string;
 };
 
-export function PaymentSuccess({ r }: { r: Receipt }) {
+/** remaining: items still in the cart (added while a failed capture was being retried). */
+export function PaymentSuccess({ r, remaining, onContinue }: { r: Receipt; remaining: number; onContinue: () => void }) {
   return (
     <section className="rounded-lg border border-emerald-300 p-6 dark:border-emerald-900">
       <h2 className="text-xl font-semibold">Payment complete</h2>
@@ -22,6 +23,15 @@ export function PaymentSuccess({ r }: { r: Receipt }) {
         </p>
       ) : (
         <p className="mt-4 text-zinc-500">No donation on this order.</p>
+      )}
+      {remaining > 0 && (
+        <button
+          type="button"
+          onClick={onContinue}
+          className="mt-6 block rounded-md bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          Check out remaining {remaining === 1 ? "item" : `${remaining} items`}
+        </button>
       )}
       <Link href="/" className="mt-6 inline-block text-sm underline">
         Back to store
