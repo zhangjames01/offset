@@ -20,6 +20,14 @@ describe("preferences page logic", () => {
     }
   });
 
+  it("caps manual limits at the parser's ceilings ($100/month, $25/order)", () => {
+    expect(finalizeDraft(draft, { monthly: "5000", perOrder: "900" })).toEqual({
+      ok: false,
+      errors: { monthly: "Max is $100.00", perOrder: "Max is $25.00" },
+    });
+    expect(finalizeDraft(draft, { monthly: "100", perOrder: "25" }).ok).toBe(true);
+  });
+
   it("rejects bad caps and an empty cause list", () => {
     const r = finalizeDraft({ ...draft, causes: [] }, { monthly: "abc", perOrder: "5" });
     expect(r).toEqual({ ok: false, errors: { monthly: "Enter an amount like 15.00", causes: "Pick at least one cause" } });

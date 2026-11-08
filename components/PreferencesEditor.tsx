@@ -31,12 +31,16 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went
 export function PreferencesEditor({ causes }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [text, setText] = useState("");
+  // The text the chips were last loaded, parsed or saved from. Saving edited text with old chips
+  // would store a mismatch, so Save waits until the new text is parsed.
+  const [parsedText, setParsedText] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [caps, setCaps] = useState<CapText>({ monthly: "", perOrder: "" });
   const [errors, setErrors] = useState<DraftErrors>({});
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
   function show(p: Preferences) {
+    setParsedText(p.rawText);
     setDraft(toDraft(p));
     setCaps({ monthly: centsToDollars(p.monthlyCapCents), perOrder: centsToDollars(p.perOrderMaxCents) });
     setErrors({});
@@ -63,7 +67,7 @@ export function PreferencesEditor({ causes }: Props) {
   function edit(next: Partial<Draft>) {
     if (!draft) return;
     setDraft({ ...draft, ...next });
-    if (status.kind === "saved") setStatus({ kind: "idle" });
+    setStatus({ kind: "unsaved" });
   }
 
   async function parse() {
@@ -78,7 +82,7 @@ export function PreferencesEditor({ causes }: Props) {
 
   async function save() {
     if (!draft) return;
-    const r = finalizeDraft({ ...draft, rawText: text }, caps);
+    const r = finalizeDraft({ ...draft, rawText: parsedText }, caps);
     if (!r.ok) return setErrors(r.errors);
     setErrors({});
     setStatus({ kind: "busy", what: "Saving…" });
@@ -92,6 +96,7 @@ export function PreferencesEditor({ causes }: Props) {
   }
 
   const busy = status.kind === "busy";
+  const textChanged = draft !== null && text !== parsedText;
 
   return (
     <main className="mx-auto w-full max-w-2xl p-4 sm:p-8">
@@ -129,16 +134,18 @@ export function PreferencesEditor({ causes }: Props) {
             error={errors.causes}
             options={causes.map((c) => ({ value: c.id, label: c.name.replace(/ \(placeholder partner\)$/, "") }))}
             selected={draft.causes}
+            disabled={busy}
             onToggle={(id) => edit({ causes: toggle(draft.causes, id) })}
           />
           <ChipGroup
             title="Don't suggest donations for"
             options={Category.options.map((c) => ({ value: c, label: CATEGORY_LABEL[c] }))}
             selected={draft.optOutCategories}
+            disabled={busy}
             onToggle={(c) => edit({ optOutCategories: toggle(draft.optOutCategories, c) })}
             tone="muted"
           />
-          <fieldset className="grid gap-4 sm:grid-cols-2">
+          <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
             <legend className="mb-2 text-sm font-medium">Limits</legend>
             <MoneyField id="cap-monthly" label="Monthly cap" value={caps.monthly} error={errors.monthly} onChange={(v) => { setCaps({ ...caps, monthly: v }); edit({}); }} />
             <MoneyField id="cap-order" label="Max per order" value={caps.perOrder} error={errors.perOrder} onChange={(v) => { setCaps({ ...caps, perOrder: v }); edit({}); }} />
@@ -148,14 +155,23 @@ export function PreferencesEditor({ causes }: Props) {
             <button
               type="button"
               onClick={save}
-              disabled={busy}
+              disabled={busy || textChanged}
               className="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
             >
               Save preferences
             </button>
             <span role="status" className="text-sm">
               {status.kind === "busy" && <span className="text-zinc-500">{status.what}</span>}
-              {status.kind === "unsaved" && <span className="text-amber-700 dark:text-amber-400">Review the choices below, then save</span>}
+              {status.kind !== "busy" && textChanged && (
+                <span className="text-amber-700 dark:text-amber-400">
+                  Text changed. Click &quot;Update from text&quot; first, or{" "}
+                  <button type="button" onClick={() => setText(parsedText)} className="underline">
+                    undo the text change
+                  </button>
+                  .
+                </span>
+              )}
+              {status.kind === "unsaved" && !textChanged && <span className="text-amber-700 dark:text-amber-400">Review the choices below, then save</span>}
               {status.kind === "saved" && <span className="text-emerald-700 dark:text-emerald-400">✓ Saved</span>}
               {status.kind === "error" && <span className="text-red-600">{status.message}</span>}
             </span>
@@ -173,12 +189,13 @@ function ChipGroup<T extends string>(props: {
   onToggle: (v: T) => void;
   error?: string;
   tone?: "muted";
+  disabled?: boolean;
 }) {
   const on = props.tone === "muted"
     ? "border-zinc-500 bg-zinc-700 text-white dark:bg-zinc-300 dark:text-zinc-900"
     : "border-emerald-600 bg-emerald-600 text-white";
   return (
-    <fieldset>
+    <fieldset disabled={props.disabled}>
       <legend className="text-sm font-medium">{props.title}</legend>
       <div className="mt-2 flex flex-wrap gap-2">
         {props.options.map((o) => {
@@ -189,7 +206,7 @@ function ChipGroup<T extends string>(props: {
               type="button"
               aria-pressed={pressed}
               onClick={() => props.onToggle(o.value)}
-              className={`rounded-full border px-3 py-1 text-sm ${pressed ? on : "border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"}`}
+              className={`rounded-full border px-3 py-1 text-sm disabled:opacity-50 ${pressed ? on : "border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"}`}
             >
               {pressed ? "✓ " : ""}
               {o.label}

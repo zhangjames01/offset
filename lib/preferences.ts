@@ -1,6 +1,8 @@
 // Preferences page logic (H5). Pure functions so they're unit-testable.
 import type { Preferences, SavePreferencesRequest } from "@/contracts";
 import { parseDollars } from "@/lib/donation";
+// caps.ts is pure (type-only imports), so this is safe in the browser bundle.
+import { CAP_CEILINGS } from "@/lib/preferences-parser/caps";
 
 export type Draft = SavePreferencesRequest;
 
@@ -18,6 +20,8 @@ export function centsToDollars(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+const dollars = (cents: number) => `$${centsToDollars(cents)}`;
+
 export type CapText = { monthly: string; perOrder: string };
 export type DraftErrors = Partial<Record<"monthly" | "perOrder" | "causes", string>>;
 
@@ -27,10 +31,10 @@ export function finalizeDraft(draft: Draft, caps: CapText): { ok: true; draft: D
   const monthly = parseDollars(caps.monthly);
   const perOrder = parseDollars(caps.perOrder);
   if (monthly === null) errors.monthly = "Enter an amount like 15.00";
+  else if (monthly > CAP_CEILINGS.monthlyCapCents) errors.monthly = `Max is ${dollars(CAP_CEILINGS.monthlyCapCents)}`;
   if (perOrder === null) errors.perOrder = "Enter an amount like 5.00";
-  if (monthly !== null && perOrder !== null && perOrder > monthly) {
-    errors.perOrder = "Can't be more than the monthly cap";
-  }
+  else if (perOrder > CAP_CEILINGS.perOrderMaxCents) errors.perOrder = `Max is ${dollars(CAP_CEILINGS.perOrderMaxCents)}`;
+  else if (monthly !== null && perOrder > monthly) errors.perOrder = "Can't be more than the monthly cap";
   if (draft.causes.length === 0) errors.causes = "Pick at least one cause";
   if (Object.keys(errors).length) return { ok: false, errors };
   return { ok: true, draft: { ...draft, monthlyCapCents: monthly!, perOrderMaxCents: perOrder! } };
