@@ -16,7 +16,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "classify:smoke": "tsx scripts/classify-smoke.ts"
+    "classify:smoke": "tsx scripts/classify-smoke.ts",
+    "prefs:smoke": "tsx scripts/prefs-smoke.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.5.0",

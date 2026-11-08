@@ -79,7 +79,8 @@ export function anthropicClassifier(opts: { client?: MessagesClient; model?: str
   };
 }
 
-function toLlmError(err: unknown): LlmError {
+/** Maps an Anthropic SDK error to an LlmError. Shared with the preferences parser (A4). */
+export function toLlmError(err: unknown): LlmError {
   if (err instanceof Anthropic.RateLimitError) return new LlmError("rate_limited", "LLM rate limited (429)");
   if (err instanceof Anthropic.APIConnectionTimeoutError || err instanceof Anthropic.APIUserAbortError) {
     return new LlmError("timeout", `LLM timed out after ${TIMEOUT_MS}ms`);
