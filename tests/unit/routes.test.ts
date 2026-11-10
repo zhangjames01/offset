@@ -48,7 +48,7 @@ const flightCart = {
   items: [
     {
       productId: "flight-jfk-lax",
-      name: "JFK â†’ LAX",
+      name: "JFK → LAX",
       description: "flight",
       unitPriceCents: 24900,
       quantity: 1,
@@ -111,7 +111,7 @@ describe("mock mode routes", () => {
     );
   });
 
-  test("checkout â†’ capture â†’ ledger â†’ payout flow", async () => {
+  test("checkout → capture → ledger → payout flow", async () => {
     const created = CreateOrderResponse.parse(
       await (await createOrder(post(order(500)))).json(),
     );
