@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { CreateOrderRequest, CreateOrderResponse } from "@/contracts";
 import { ApiFailure, handle, modes, ok, parseBody } from "@/lib/api";
 import { getPrisma } from "@/lib/db";
-import { mockCatalog, mockPreferences } from "@/lib/mocks";
+import { mockCatalog, mockCauses, mockPreferences } from "@/lib/mocks";
 import { nextId, store } from "@/lib/mock-store";
 import { createPayPalOrder } from "@/lib/paypal/client";
 import { hashCart } from "@/lib/checkout/cart-hash";
@@ -349,6 +349,10 @@ const attempt = await prisma.checkoutAttempt.findUniqueOrThrow({
   // Reuse this identifier for every retry.
   const localOrderId = attempt.localOrderId;
 
+  const causeName =
+  mockCauses.find((cause) => cause.id === classification.causeId)?.name ??
+  classification.causeId;
+
   let paypalOrderId: string;
 
   try {
@@ -356,6 +360,7 @@ const attempt = await prisma.checkoutAttempt.findUniqueOrThrow({
     paypalProducts,
     donationCents,
     localOrderId,
+    causeName,
   );
   } catch (error) {
     console.error("[paypal] create-order failed", error);

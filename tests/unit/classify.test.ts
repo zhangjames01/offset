@@ -1,11 +1,21 @@
 // classify() + POST /api/classify in LLM_MODE=live / rules (A2, A3), with a fake LLM. No network.
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { ClassifyResponse, type ClassifyRequest, type LlmClassification } from "@/contracts";
-import { classify, mockClassifyStore, resetClassifyGuards } from "@/lib/classifier";
+import {
+  ClassifyResponse,
+  type ClassifyRequest,
+  type LlmClassification,
+} from "@/contracts";
+import {
+  classify,
+  mockClassifyStore,
+  prismaClassifyStore,
+  resetClassifyGuards,
+} from "@/lib/classifier";
 import { LlmError } from "@/lib/classifier/llm";
 import { mockClassifyByProduct } from "@/lib/mocks";
 import { resetStore, store } from "@/lib/mock-store";
 import cartsJson from "@/tests/fixtures/carts.json";
+import { POST } from "@/app/api/classify/route";
 
 // The route builds its LLM via anthropicClassifier(); swap in a controllable fake.
 let fakeLlm: (cart: ClassifyRequest) => Promise<LlmClassification>;
@@ -13,35 +23,65 @@ vi.mock("@/lib/classifier/llm", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/classifier/llm")>()),
   anthropicClassifier: () => (cart: ClassifyRequest) => fakeLlm(cart),
 }));
-import { POST } from "@/app/api/classify/route";
 
-const carts = cartsJson.carts.map((c) => ({ ...c, request: c.request as ClassifyRequest }));
-const flightCart = carts.find((c) => c.request.items[0].productId === "flight-jfk-lax")!.request;
+const { mockPrisma } = vi.hoisted(() => ({
+  mockPrisma: {
+    preferences: {
+      findUnique: vi.fn(),
+    },
+    ledgerEntry: {
+      aggregate: vi.fn(),
+    },
+    classificationApproval: {
+      create: vi.fn(),
+    },
+  },
+}));
+
+vi.mock("@/lib/db", () => ({
+  getPrisma: () => mockPrisma,
+}));
+
+const carts = cartsJson.carts.map((c) => ({
+  ...c,
+  request: c.request as ClassifyRequest,
+}));
+const flightCart = carts.find(
+  (c) => c.request.items[0].productId === "flight-jfk-lax",
+)!.request;
 const NOV = () => new Date("2026-11-04T12:00:00Z");
 
 /** Answers like the canned mocks would, keyed by the cart's first product. */
-const mockLikeLlm = async (cart: ClassifyRequest): Promise<LlmClassification> => {
+const mockLikeLlm = async (
+  cart: ClassifyRequest,
+): Promise<LlmClassification> => {
   const m = mockClassifyByProduct[cart.items[0].productId];
   return { category: m.category, confidence: m.confidence, reason: m.reason };
 };
 
 beforeEach(() => {
+  vi.clearAllMocks();
   resetStore();
   resetClassifyGuards();
 });
 afterEach(() => vi.unstubAllEnvs());
 
 describe("classify()", () => {
-  test.each(carts.slice(0, 6).map((c) => [c.request.items[0].productId, c.request] as const))(
-    "%s: amounts match the canned mock",
-    async (id, cart) => {
-      const got = await classify(cart, { llm: mockLikeLlm, store: mockClassifyStore, now: NOV });
-      const { classificationId, ...want } = mockClassifyByProduct[id];
-      expect(classificationId).toBeTruthy();
-      expect(got).toMatchObject({ ...want, source: "llm" });
-      expect(store().classifications.get(got.classificationId)).toEqual(got);
-    },
-  );
+  test.each(
+    carts
+      .slice(0, 6)
+      .map((c) => [c.request.items[0].productId, c.request] as const),
+  )("%s: amounts match the canned mock", async (id, cart) => {
+    const got = await classify(cart, {
+      llm: mockLikeLlm,
+      store: mockClassifyStore,
+      now: NOV,
+    });
+    const { classificationId, ...want } = mockClassifyByProduct[id];
+    expect(classificationId).toBeTruthy();
+    expect(got).toMatchObject({ ...want, source: "llm" });
+    expect(store().classifications.get(got.classificationId)).toEqual(got);
+  });
 
   test("ignores client-sent prices and subtotal for catalog products", async () => {
     const seen: ClassifyRequest[] = [];
@@ -51,7 +91,11 @@ describe("classify()", () => {
       subtotalCents: 1,
       items: [{ ...flightCart.items[0], unitPriceCents: 999_999 }],
     };
-    const got = await classify(tampered, { llm: spy, store: mockClassifyStore, now: NOV });
+    const got = await classify(tampered, {
+      llm: spy,
+      store: mockClassifyStore,
+      now: NOV,
+    });
     expect(got.suggestedDonationCents).toBe(747); // 3% of the catalog's 24900
     expect(seen[0].items[0].unitPriceCents).toBe(24900); // the LLM sees trusted prices too
     expect(seen[0].subtotalCents).toBe(24900);
@@ -60,23 +104,51 @@ describe("classify()", () => {
   test("unknown products keep the client price (checkout rejects them anyway)", async () => {
     const odd = {
       ...flightCart,
-      items: [{ ...flightCart.items[0], productId: "not-in-catalog", unitPriceCents: 10_000 }],
+      items: [
+        {
+          ...flightCart.items[0],
+          productId: "not-in-catalog",
+          unitPriceCents: 10_000,
+        },
+      ],
     };
-    const llm = async () => ({ category: "air_travel" as const, confidence: 0.9, reason: "A flight." });
-    const got = await classify(odd, { llm, store: mockClassifyStore, now: NOV });
+    const llm = async () => ({
+      category: "air_travel" as const,
+      confidence: 0.9,
+      reason: "A flight.",
+    });
+    const got = await classify(odd, {
+      llm,
+      store: mockClassifyStore,
+      now: NOV,
+    });
     expect(got.suggestedDonationCents).toBe(300);
   });
 
   test("month-to-date only counts the current UTC month", async () => {
-    expect(await mockClassifyStore.getMonthToDateCents("demo-user", NOV())).toBe(650);
-    expect(await mockClassifyStore.getMonthToDateCents("demo-user", new Date("2026-12-01T00:00:00Z"))).toBe(0);
-    expect(await mockClassifyStore.getMonthToDateCents("someone-else", NOV())).toBe(0);
+    expect(
+      await mockClassifyStore.getMonthToDateCents("demo-user", NOV()),
+    ).toBe(650);
+    expect(
+      await mockClassifyStore.getMonthToDateCents(
+        "demo-user",
+        new Date("2026-12-01T00:00:00Z"),
+      ),
+    ).toBe(0);
+    expect(
+      await mockClassifyStore.getMonthToDateCents("someone-else", NOV()),
+    ).toBe(0);
   });
 });
 
 describe("POST /api/classify, LLM_MODE=live", () => {
   const post = (body: unknown) =>
-    POST(new Request("http://test/api/classify", { method: "POST", body: JSON.stringify(body) }));
+    POST(
+      new Request("http://test/api/classify", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    );
 
   beforeEach(() => vi.stubEnv("LLM_MODE", "live"));
 
@@ -85,11 +157,21 @@ describe("POST /api/classify, LLM_MODE=live", () => {
     const res = await post(flightCart);
     expect(res.status).toBe(200);
     const body = ClassifyResponse.parse(await res.json());
-    expect(body).toMatchObject({ category: "air_travel", donationCents: 500, source: "llm" });
+    expect(body).toMatchObject({
+      category: "air_travel",
+      donationCents: 500,
+      source: "llm",
+    });
     expect(body.classificationId).toMatch(/^cls_/);
   });
 
-  test.each(["invalid_output", "timeout", "rate_limited", "api_error", "not_configured"] as const)(
+  test.each([
+    "invalid_output",
+    "timeout",
+    "rate_limited",
+    "api_error",
+    "not_configured",
+  ] as const)(
     "LlmError %s → rules fallback (200, source rules), details logged not returned",
     async (kind) => {
       const log = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -100,9 +182,15 @@ describe("POST /api/classify, LLM_MODE=live", () => {
       expect(res.status).toBe(200);
       const raw = await res.text();
       const body = ClassifyResponse.parse(JSON.parse(raw));
-      expect(body).toMatchObject({ category: "air_travel", donationCents: 500, source: "rules" });
+      expect(body).toMatchObject({
+        category: "air_travel",
+        donationCents: 500,
+        source: "rules",
+      });
       expect(raw).not.toContain("secret detail");
-      expect(log).toHaveBeenCalledWith(`[classify] ${kind}: secret detail: invalid x-api-key → rules fallback`);
+      expect(log).toHaveBeenCalledWith(
+        `[classify] ${kind}: secret detail: invalid x-api-key → rules fallback`,
+      );
       log.mockRestore();
     },
   );
@@ -111,10 +199,16 @@ describe("POST /api/classify, LLM_MODE=live", () => {
     let calls = 0;
     fakeLlm = async (c) => (calls++, mockLikeLlm(c));
     const first = ClassifyResponse.parse(await (await post(flightCart)).json());
-    const second = ClassifyResponse.parse(await (await post({ ...flightCart, cartId: "other" })).json());
+    const second = ClassifyResponse.parse(
+      await (await post({ ...flightCart, cartId: "other" })).json(),
+    );
     expect(calls).toBe(1);
     expect(first.source).toBe("llm");
-    expect(second).toMatchObject({ ...first, classificationId: second.classificationId, source: "cache" });
+    expect(second).toMatchObject({
+      ...first,
+      classificationId: second.classificationId,
+      source: "cache",
+    });
     expect(second.classificationId).not.toBe(first.classificationId);
   });
 
@@ -123,9 +217,13 @@ describe("POST /api/classify, LLM_MODE=live", () => {
     fakeLlm = async () => {
       throw new LlmError("timeout", "slow");
     };
-    expect(ClassifyResponse.parse(await (await post(flightCart)).json()).source).toBe("rules");
+    expect(
+      ClassifyResponse.parse(await (await post(flightCart)).json()).source,
+    ).toBe("rules");
     fakeLlm = mockLikeLlm;
-    expect(ClassifyResponse.parse(await (await post(flightCart)).json()).source).toBe("llm");
+    expect(
+      ClassifyResponse.parse(await (await post(flightCart)).json()).source,
+    ).toBe("llm");
     log.mockRestore();
   });
 
@@ -139,7 +237,10 @@ describe("POST /api/classify, LLM_MODE=live", () => {
           method: "POST",
           headers: { "x-forwarded-for": `${ip}, 10.0.0.1` },
           // A different quantity each time → a different cart → a cache miss.
-          body: JSON.stringify({ ...flightCart, items: [{ ...flightCart.items[0], quantity: n }] }),
+          body: JSON.stringify({
+            ...flightCart,
+            items: [{ ...flightCart.items[0], quantity: n }],
+          }),
         }),
       ).then(async (r) => ClassifyResponse.parse(await r.json()).source);
 
@@ -166,14 +267,159 @@ describe("POST /api/classify, LLM_MODE=rules", () => {
     };
     for (const { request } of carts.slice(0, 6)) {
       const res = await POST(
-        new Request("http://test/api/classify", { method: "POST", body: JSON.stringify(request) }),
+        new Request("http://test/api/classify", {
+          method: "POST",
+          body: JSON.stringify(request),
+        }),
       );
       expect(res.status).toBe(200);
       const body = ClassifyResponse.parse(await res.json());
       const m = mockClassifyByProduct[request.items[0].productId];
-      const pick = (r: ClassifyResponse) => [r.category, r.causeId, r.suggestedDonationCents, r.donationCents, r.maxDonationCents, r.rateRule, r.adjustment];
+      const pick = (r: ClassifyResponse) => [
+        r.category,
+        r.causeId,
+        r.suggestedDonationCents,
+        r.donationCents,
+        r.maxDonationCents,
+        r.rateRule,
+        r.adjustment,
+      ];
       expect(pick(body)).toEqual(pick(m));
       expect(body.source).toBe("rules");
     }
+  });
+});
+
+describe("Sandbox classification — Neon preferences", () => {
+  test("respects a $2 per-order donation cap", async () => {
+    const savedPreferences = {
+      ...store().preferences,
+      perOrderMaxCents: 200,
+      updatedAt: new Date("2026-11-04T12:00:00Z"),
+    };
+
+    mockPrisma.preferences.findUnique.mockResolvedValue(savedPreferences);
+
+    mockPrisma.ledgerEntry.aggregate.mockResolvedValue({
+      _sum: { amountCents: 0 },
+    });
+
+    mockPrisma.classificationApproval.create.mockResolvedValue({});
+
+    const result = await classify(flightCart, {
+      llm: mockLikeLlm,
+      store: prismaClassifyStore,
+      now: NOV,
+    });
+
+    expect(result.category).toBe("air_travel");
+
+    // The uncapped suggestion is $7.47.
+    expect(result.suggestedDonationCents).toBe(747);
+
+    // The actual donation must respect the $2 limit.
+    expect(result.donationCents).toBe(200);
+
+    // Confirm the saved preferences were read from Neon.
+    expect(mockPrisma.preferences.findUnique).toHaveBeenCalledWith({
+      where: { userId: flightCart.userId },
+    });
+
+    // Confirm the approval was persisted to Neon.
+    expect(mockPrisma.classificationApproval.create).toHaveBeenCalledOnce();
+  });
+
+  test("respects a cause opt-out saved in Neon", async () => {
+    const savedPreferences = {
+      ...store().preferences,
+      optOutCategories: [
+        ...store().preferences.optOutCategories,
+        "air_travel" as const,
+      ],
+      updatedAt: new Date("2026-11-04T12:00:00Z"),
+    };
+
+    mockPrisma.preferences.findUnique.mockResolvedValue(savedPreferences);
+
+    mockPrisma.ledgerEntry.aggregate.mockResolvedValue({
+      _sum: { amountCents: 0 },
+    });
+
+    mockPrisma.classificationApproval.create.mockResolvedValue({});
+
+    const result = await classify(flightCart, {
+      llm: mockLikeLlm,
+      store: prismaClassifyStore,
+      now: NOV,
+    });
+
+    expect(result.category).toBe("air_travel");
+
+    // Carbon removal is disabled, so no donation should be charged.
+    expect(result.donationCents).toBe(0);
+
+    expect(mockPrisma.preferences.findUnique).toHaveBeenCalledWith({
+      where: { userId: flightCart.userId },
+    });
+  });
+
+  test("respects the monthly donation cap saved in Neon", async () => {
+    const savedPreferences = {
+      ...store().preferences,
+      monthlyCapCents: 1000,
+      updatedAt: new Date("2026-11-04T12:00:00Z"),
+    };
+
+    mockPrisma.preferences.findUnique.mockResolvedValue(savedPreferences);
+
+    // The user has already donated $10 this month.
+    mockPrisma.ledgerEntry.aggregate.mockResolvedValue({
+      _sum: { amountCents: 1000 },
+    });
+
+    mockPrisma.classificationApproval.create.mockResolvedValue({});
+
+    const result = await classify(flightCart, {
+      llm: mockLikeLlm,
+      store: prismaClassifyStore,
+      now: NOV,
+    });
+
+    expect(result.category).toBe("air_travel");
+
+    // No remaining monthly donation allowance.
+    expect(result.donationCents).toBe(0);
+
+    // Verify that the monthly ledger total came from Neon.
+    expect(mockPrisma.ledgerEntry.aggregate).toHaveBeenCalledWith({
+      where: {
+        userId: flightCart.userId,
+        createdAt: {
+          gte: new Date("2026-11-01T00:00:00.000Z"),
+        },
+      },
+      _sum: { amountCents: true },
+    });
+  });
+
+  test("mock mode continues using in-memory preferences", async () => {
+    const result = await classify(flightCart, {
+      llm: mockLikeLlm,
+      store: mockClassifyStore,
+      now: NOV,
+    });
+
+    expect(result.category).toBe("air_travel");
+    expect(result.donationCents).toBe(500);
+
+    // Mock classification should be saved in memory.
+    expect(store().classifications.get(result.classificationId)).toEqual(
+      result,
+    );
+
+    // Mock classification should not access Neon.
+    expect(mockPrisma.preferences.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.ledgerEntry.aggregate).not.toHaveBeenCalled();
+    expect(mockPrisma.classificationApproval.create).not.toHaveBeenCalled();
   });
 });

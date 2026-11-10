@@ -73,6 +73,7 @@ export async function createPayPalOrder(
   products: PayPalOrderItem[],
   donationCents: number,
   localOrderId: string,
+  causeName: string,
 ): Promise<string> {
   if (products.length === 0) {
     throw new Error("PayPal order must contain products");
@@ -114,7 +115,7 @@ export async function createPayPalOrder(
 
 if (donationCents > 0) {
   items.push({
-    name: "Optional charitable contribution",
+    name: `Donation: ${causeName} (via Offset)`.slice(0, 127),
     quantity: "1",
     unit_amount: {
       currency_code: "USD",

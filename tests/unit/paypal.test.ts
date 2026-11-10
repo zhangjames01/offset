@@ -67,6 +67,7 @@ describe("PayPal order line items", () => {
       ],
       200,
       "ord_test_123",
+      "Carbon removal",
     );
 
     expect(orderId).toBe("PAYPAL-ORDER-123");
@@ -85,7 +86,7 @@ describe("PayPal order line items", () => {
         },
       },
       {
-        name: "Optional charitable contribution",
+        name: "Donation: Carbon removal (via Offset)",
         quantity: "1",
         unit_amount: {
           currency_code: "USD",
@@ -111,6 +112,7 @@ describe("PayPal order line items", () => {
       ],
       200,
       "ord_total_test",
+      "Carbon removal",
     );
 
     const { payload } = getOrderRequest();
@@ -133,6 +135,7 @@ describe("PayPal order line items", () => {
       ],
       0,
       "ord_no_donation",
+      "Carbon removal",
     );
 
     const { payload } = getOrderRequest();
@@ -155,6 +158,7 @@ describe("PayPal order line items", () => {
       ],
       100,
       "ord_stable_retry_key",
+      "Carbon removal",
     );
 
     const { options } = getOrderRequest();
@@ -176,6 +180,7 @@ describe("PayPal order line items", () => {
         ],
         -100,
         "ord_invalid",
+        "Carbon removal",
       ),
     ).rejects.toThrow("Invalid donation amount");
 
