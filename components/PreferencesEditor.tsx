@@ -108,7 +108,8 @@ export function PreferencesEditor({ causes }: Props) {
       {loadError && (
         <div className="mt-6">
           <LoadError
-            message="Couldn't load your preferences. Check your connection and try again."
+            message="Couldn't load your preferences."
+            detail={loadError}
             onRetry={() => {
               setLoadError(null);
               setAttempt((n) => n + 1);
@@ -126,13 +127,15 @@ export function PreferencesEditor({ causes }: Props) {
         maxLength={1000}
         value={text}
         onChange={(e) => setText(e.target.value)}
+        // Disabled until preferences load, so a successful retry can't overwrite typed text.
+        disabled={draft === null}
         placeholder="I care about climate and hunger. Max $15 a month, skip packaging."
-        className="mt-1 w-full rounded-md border border-zinc-300 bg-transparent p-2 text-sm dark:border-zinc-700"
+        className="mt-1 w-full rounded-md border border-zinc-300 bg-transparent p-2 text-sm disabled:opacity-50 dark:border-zinc-700"
       />
       <button
         type="button"
         onClick={parse}
-        disabled={busy || !text.trim()}
+        disabled={busy || draft === null || !text.trim()}
         className="mt-2 rounded-md border border-zinc-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-zinc-700"
       >
         Update from text

@@ -38,7 +38,8 @@ export function Storefront() {
           {load.status === "loading" && <p className="text-zinc-500">Loading products…</p>}
           {load.status === "error" && (
             <LoadError
-              message="Couldn't load products. Check your connection and try again."
+              message="Couldn't load products."
+              detail={load.message}
               onRetry={() => {
                 setLoad({ status: "loading" });
                 setAttempt((n) => n + 1);
@@ -156,6 +157,7 @@ function MobileCartBar() {
         </a>
         <Link
           href="/checkout"
+          aria-label={`Checkout (${count} ${count === 1 ? "item" : "items"})`}
           className="rounded-md bg-zinc-900 px-5 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
         >
           Checkout

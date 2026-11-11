@@ -17,18 +17,18 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
   const [batch, setBatch] = useState<{ b: PayoutBatch; dryRun: boolean } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [ledgerError, setLedgerError] = useState(false);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
 
   const reload = useCallback(() => {
-    setLedgerError(false);
-    getJson("/api/ledger", LedgerResponse).then(setLedger, () => setLedgerError(true));
+    setLedgerError(null);
+    getJson("/api/ledger", LedgerResponse).then(setLedger, (e: unknown) => setLedgerError(errMsg(e)));
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     getJson("/api/ledger", LedgerResponse).then(
       (l) => !cancelled && setLedger(l),
-      () => !cancelled && setLedgerError(true),
+      (e: unknown) => !cancelled && setLedgerError(errMsg(e)),
     );
     return () => {
       cancelled = true;
@@ -80,7 +80,7 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
         <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
           <h2 className="mb-4 font-semibold">Pending balances</h2>
           {ledgerError ? (
-            <LoadError message="Couldn't load balances. Check your connection and try again." onRetry={reload} />
+            <LoadError message="Couldn't load balances." detail={ledgerError} onRetry={reload} />
           ) : ledger ? (
             <CauseBalances balances={ledger.balances} causes={causes} />
           ) : (
