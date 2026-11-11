@@ -17,6 +17,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "classify:smoke": "tsx scripts/classify-smoke.ts",
+    "classify:eval": "tsx scripts/classify-eval.ts",
     "prefs:smoke": "tsx scripts/prefs-smoke.ts"
   },
   "dependencies": {
