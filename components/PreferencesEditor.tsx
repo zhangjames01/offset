@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LoadError } from "./LoadError";
 import { ApiError, Category, Preferences, type CauseId } from "@/contracts";
 import { CATEGORY_LABEL } from "@/lib/donation";
 import {
@@ -30,6 +31,7 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went
 
 export function PreferencesEditor({ causes }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [text, setText] = useState("");
   // The text the chips were last loaded, parsed or saved from. Saving edited text with old chips
   // would store a mismatch, so Save waits until the new text is parsed.
@@ -62,7 +64,7 @@ export function PreferencesEditor({ causes }: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   function edit(next: Partial<Draft>) {
     if (!draft) return;
@@ -103,7 +105,17 @@ export function PreferencesEditor({ causes }: Props) {
       <h1 className="text-2xl font-semibold">Giving preferences</h1>
       <p className="mt-1 text-sm text-zinc-500">Tell us what you care about. We&apos;ll match checkout donations to it.</p>
 
-      {loadError && <p className="mt-6 text-red-600">{loadError}</p>}
+      {loadError && (
+        <div className="mt-6">
+          <LoadError
+            message="Couldn't load your preferences. Check your connection and try again."
+            onRetry={() => {
+              setLoadError(null);
+              setAttempt((n) => n + 1);
+            }}
+          />
+        </div>
+      )}
 
       <label htmlFor="pref-text" className="mt-6 block text-sm font-medium">
         In your own words

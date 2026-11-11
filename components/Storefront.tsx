@@ -5,11 +5,13 @@ import { useEffect, useState } from "react";
 import { CatalogResponse, type Product } from "@/contracts";
 import { formatCents, itemCount, MAX_QTY, subtotalCents } from "@/lib/cart";
 import { useCart } from "./CartProvider";
+import { LoadError } from "./LoadError";
 
 type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ok"; products: Product[] };
 
 export function Storefront() {
   const [load, setLoad] = useState<Load>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,16 +27,24 @@ export function Storefront() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   return (
-    <main className="mx-auto grid w-full max-w-6xl gap-8 p-4 sm:p-8 lg:grid-cols-[1fr_320px]">
+    <main className="mx-auto grid w-full max-w-6xl gap-8 p-4 pb-24 sm:p-8 sm:pb-24 lg:grid-cols-[1fr_320px] lg:pb-8">
       <section>
         <h1 className="text-2xl font-semibold">Offset Store</h1>
         <p className="mt-1 text-sm text-zinc-500">Add items, then check out with an optional matched donation.</p>
         <div className="mt-6">
           {load.status === "loading" && <p className="text-zinc-500">Loading products…</p>}
-          {load.status === "error" && <p className="text-red-600">{load.message}</p>}
+          {load.status === "error" && (
+            <LoadError
+              message="Couldn't load products. Check your connection and try again."
+              onRetry={() => {
+                setLoad({ status: "loading" });
+                setAttempt((n) => n + 1);
+              }}
+            />
+          )}
           {load.status === "ok" && (
             <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {load.products.map((p) => (
@@ -45,6 +55,7 @@ export function Storefront() {
         </div>
       </section>
       <CartPanel />
+      <MobileCartBar />
     </main>
   );
 }
@@ -74,7 +85,7 @@ function CartPanel() {
   const count = itemCount(cart);
 
   return (
-    <aside className="h-fit rounded-lg border border-zinc-200 p-4 lg:sticky lg:top-8 dark:border-zinc-800">
+    <aside id="cart" className="h-fit scroll-mt-4 rounded-lg border border-zinc-200 p-4 lg:sticky lg:top-8 dark:border-zinc-800">
       <h2 className="font-semibold">Cart ({count})</h2>
       {count === 0 ? (
         <p className="mt-3 text-sm text-zinc-500">Your cart is empty.</p>
@@ -125,5 +136,31 @@ function CartPanel() {
         </Link>
       )}
     </aside>
+  );
+}
+
+/** Phones: the cart sits below all the products, so keep a summary and Checkout in reach. */
+function MobileCartBar() {
+  const { cart } = useCart();
+  const count = itemCount(cart);
+  if (count === 0) return null;
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-10 border-t border-zinc-200 bg-white/95 p-3 backdrop-blur lg:hidden dark:border-zinc-800 dark:bg-zinc-950/95">
+      <div className="mx-auto flex max-w-6xl items-center gap-3">
+        <a href="#cart" className="flex-1 text-sm">
+          <span className="font-semibold">
+            {count} {count === 1 ? "item" : "items"}
+          </span>{" "}
+          <span className="tabular-nums text-zinc-600 dark:text-zinc-400">· {formatCents(subtotalCents(cart))}</span>
+          <span className="block text-xs text-zinc-500 underline">View cart</span>
+        </a>
+        <Link
+          href="/checkout"
+          className="rounded-md bg-zinc-900 px-5 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          Checkout
+        </Link>
+      </div>
+    </div>
   );
 }
