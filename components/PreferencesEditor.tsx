@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LoadError } from "./LoadError";
 import { ApiError, Category, Preferences, type CauseId } from "@/contracts";
 import { CATEGORY_LABEL } from "@/lib/donation";
 import {
@@ -30,6 +31,7 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went
 
 export function PreferencesEditor({ causes }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [text, setText] = useState("");
   // The text the chips were last loaded, parsed or saved from. Saving edited text with old chips
   // would store a mismatch, so Save waits until the new text is parsed.
@@ -62,7 +64,7 @@ export function PreferencesEditor({ causes }: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   function edit(next: Partial<Draft>) {
     if (!draft) return;
@@ -103,7 +105,18 @@ export function PreferencesEditor({ causes }: Props) {
       <h1 className="text-2xl font-semibold">Giving preferences</h1>
       <p className="mt-1 text-sm text-zinc-500">Tell us what you care about. We&apos;ll match checkout donations to it.</p>
 
-      {loadError && <p className="mt-6 text-red-600">{loadError}</p>}
+      {loadError && (
+        <div className="mt-6">
+          <LoadError
+            message="Couldn't load your preferences."
+            detail={loadError}
+            onRetry={() => {
+              setLoadError(null);
+              setAttempt((n) => n + 1);
+            }}
+          />
+        </div>
+      )}
 
       <label htmlFor="pref-text" className="mt-6 block text-sm font-medium">
         In your own words
@@ -114,13 +127,15 @@ export function PreferencesEditor({ causes }: Props) {
         maxLength={1000}
         value={text}
         onChange={(e) => setText(e.target.value)}
+        // Disabled until preferences load, so a successful retry can't overwrite typed text.
+        disabled={draft === null}
         placeholder="I care about climate and hunger. Max $15 a month, skip packaging."
-        className="mt-1 w-full rounded-md border border-zinc-300 bg-transparent p-2 text-sm dark:border-zinc-700"
+        className="mt-1 w-full rounded-md border border-zinc-300 bg-transparent p-2 text-sm disabled:opacity-50 dark:border-zinc-700"
       />
       <button
         type="button"
         onClick={parse}
-        disabled={busy || !text.trim()}
+        disabled={busy || draft === null || !text.trim()}
         className="mt-2 rounded-md border border-zinc-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-zinc-700"
       >
         Update from text
