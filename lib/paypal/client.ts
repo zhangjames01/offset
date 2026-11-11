@@ -180,3 +180,201 @@ if (donationCents > 0) {
 
   return data.id;
 }
+
+export type PayPalCaptureResult = {
+  status: "COMPLETED";
+  captureId: string;
+  amountCents: number;
+  currencyCode: "USD";
+};
+
+export type PayPalOrderCaptureStatus = {
+  status: string;
+  captureId: string | null;
+  captureStatus: string | null;
+  amountCents: number | null;
+};
+
+export async function getPayPalOrder(
+  paypalOrderId: string,
+): Promise<PayPalOrderCaptureStatus> {
+  if (!/^[A-Za-z0-9]+$/.test(paypalOrderId)) {
+    throw new Error("Invalid PayPal order ID");
+  }
+
+  const accessToken = await getAccessToken();
+
+  const response = await fetch(
+    `${PAYPAL_BASE_URL}/v2/checkout/orders/${paypalOrderId}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`PayPal order lookup failed: ${response.status}`);
+  }
+
+  const data: unknown = await response.json();
+
+  if (!data || typeof data !== "object" || !("status" in data)) {
+    throw new Error("Invalid PayPal order response");
+  }
+
+  const order = data as {
+    status: string;
+    purchase_units?: Array<{
+      payments?: {
+        captures?: Array<{
+          id: string;
+          status: string;
+          amount: {
+            currency_code: string;
+            value: string;
+          };
+        }>;
+      };
+    }>;
+  };
+
+  const captures =
+    order.purchase_units?.flatMap(
+      (unit) => unit.payments?.captures ?? [],
+    ) ?? [];
+
+  if (captures.length === 0) {
+    return {
+      status: order.status,
+      captureId: null,
+      captureStatus: null,
+      amountCents: null,
+    };
+  }
+
+  if (captures.length !== 1) {
+    throw new Error("Expected exactly one PayPal capture");
+  }
+
+  const capture = captures[0];
+
+  if (
+    !capture.id ||
+    capture.amount?.currency_code !== "USD" ||
+    !/^\d+\.\d{2}$/.test(capture.amount.value)
+  ) {
+    throw new Error("Invalid PayPal capture details");
+  }
+
+  const [dollars, cents] = capture.amount.value.split(".");
+  const amountCents = Number(dollars) * 100 + Number(cents);
+
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+    throw new Error("Invalid PayPal capture amount");
+  }
+
+  return {
+    status: order.status,
+    captureId: capture.id,
+    captureStatus: capture.status,
+    amountCents,
+  };
+}
+
+export async function capturePayPalOrder(
+  paypalOrderId: string,
+): Promise<PayPalCaptureResult> {
+  if (!/^[A-Za-z0-9]+$/.test(paypalOrderId)) {
+    throw new Error("Invalid PayPal order ID");
+  }
+
+  const accessToken = await getAccessToken();
+
+  const response = await fetch(
+    `${PAYPAL_BASE_URL}/v2/checkout/orders/${paypalOrderId}/capture`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+        "PayPal-Request-Id": `capture-${paypalOrderId}`,
+      },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`PayPal capture failed: ${response.status}`);
+  }
+
+  const data: unknown = await response.json();
+
+  if (!data || typeof data !== "object" || !("status" in data)) {
+    throw new Error("Invalid PayPal capture response");
+  }
+
+  if (data.status !== "COMPLETED") {
+    throw new Error("PayPal order was not completed");
+  }
+
+  const captures =
+    "purchase_units" in data &&
+    Array.isArray(data.purchase_units)
+      ? data.purchase_units.flatMap((unit: unknown) => {
+          if (!unit || typeof unit !== "object") return [];
+
+          if (
+            !("payments" in unit) ||
+            !unit.payments ||
+            typeof unit.payments !== "object" ||
+            !("captures" in unit.payments) ||
+            !Array.isArray(unit.payments.captures)
+          ) {
+            return [];
+          }
+
+          return unit.payments.captures;
+        })
+      : [];
+
+  if (captures.length !== 1) {
+    throw new Error("Expected exactly one PayPal capture");
+  }
+
+  const capture = captures[0];
+
+  if (
+    !capture ||
+    typeof capture !== "object" ||
+    typeof capture.id !== "string" ||
+    capture.status !== "COMPLETED" ||
+    !capture.amount ||
+    capture.amount.currency_code !== "USD" ||
+    typeof capture.amount.value !== "string"
+  ) {
+    throw new Error("Invalid PayPal capture details");
+  }
+
+  if (!/^\d+\.\d{2}$/.test(capture.amount.value)) {
+    throw new Error("Invalid PayPal capture amount");
+  }
+
+  const [dollars, cents] = capture.amount.value.split(".");
+  const amountCents = Number(dollars) * 100 + Number(cents);
+
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+    throw new Error("Invalid PayPal capture total");
+  }
+
+  return {
+    status: "COMPLETED",
+    captureId: capture.id,
+    amountCents,
+    currencyCode: "USD",
+  };
+}
