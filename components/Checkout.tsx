@@ -21,6 +21,8 @@ type Failure = {
   orderId: string | null;
   details: ReceiptDetails;
   retries: number;
+  /** The API error code, e.g. CHECKOUT_CONFLICT when the same checkout is still being processed. */
+  code: string | null;
   /** What this order paid for, so a late capture success only removes those items. */
   paid: { productId: string; quantity: number }[];
 };
@@ -89,6 +91,12 @@ export function Checkout({ pay }: { pay: PayConfig }) {
   }
 
   function retryFailure(f: Failure) {
+    if (!f.orderId && f.code === "CHECKOUT_CONFLICT") {
+      // The same checkout is still processing. Keep the card and decision as they are, so paying
+      // again sends the identical request and gets the existing PayPal order back.
+      setFailure(null);
+      return;
+    }
     if (!f.orderId) {
       // create-order failed: re-classify too, in case the limits changed (e.g. monthly room).
       // Dropping the old result stops a stale card from being paid while that runs. The
@@ -196,11 +204,12 @@ export function Checkout({ pay }: { pay: PayConfig }) {
               clientId={pay.clientId}
               request={classification && d ? toCreateOrderRequest(cart, classification, d) : null}
               onPaid={(r) => finish(r, details)}
-              onFailed={(message, orderId) => setFailure({
+              onFailed={(message, orderId, code) => setFailure({
                   message,
                   orderId: orderId ?? null,
                   details,
                   retries: 0,
+                  code: code ?? null,
                   paid: cart.lines.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
                 })}
             />
