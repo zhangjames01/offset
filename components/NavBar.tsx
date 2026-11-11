@@ -13,6 +13,12 @@ export function NavBar() {
         <Link href="/preferences" className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">
           Preferences
         </Link>
+        <Link href="/impact" className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">
+          Impact
+        </Link>
+        <Link href="/admin" className="ml-auto text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
+          Admin
+        </Link>
       </div>
     </nav>
   );
