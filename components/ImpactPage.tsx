@@ -44,9 +44,7 @@ export function ImpactPage({ causes }: { causes: CauseInfo[] }) {
           <section className="mt-8 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
             <h2 className="mb-4 font-semibold">Causes</h2>
             <CauseBalances balances={load.data.balances} causes={causes} />
-            <p className="mt-4 text-xs text-zinc-500">
-              All causes are placeholder partners. {causes[0]?.impactNote ?? ""}
-            </p>
+            <p className="mt-4 text-xs text-zinc-500">All causes are placeholder partners.</p>
           </section>
 
           <section className="mt-8">

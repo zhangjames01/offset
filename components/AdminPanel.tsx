@@ -33,6 +33,7 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
   }, []);
 
   async function run(dryRun: boolean) {
+    if (!dryRun && !window.confirm("Run payout now? This will start the payout batch.")) return;
     setBusy(dryRun ? "Previewing…" : "Running payout…");
     setError(null);
     try {

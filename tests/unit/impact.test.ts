@@ -11,6 +11,13 @@ describe("impact page logic", () => {
     expect(thresholdProgress(bal(500))).toEqual({ pct: 100, ready: true, toGoCents: 0 });
     expect(thresholdProgress(bal(900))).toEqual({ pct: 100, ready: true, toGoCents: 0 });
     expect(thresholdProgress(bal(0, 0))).toEqual({ pct: 0, ready: false, toGoCents: 0 });
+    // threshold 0: anything pending is ready, nothing pending isn't
+    expect(thresholdProgress(bal(1, 0))).toEqual({ pct: 100, ready: true, toGoCents: 0 });
+  });
+
+  it("handles an empty ledger", () => {
+    expect(newestFirst([])).toEqual([]);
+    expect(totalCents([])).toBe(0);
   });
 
   it("sorts newest first and totals the ledger", () => {
