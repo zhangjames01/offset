@@ -8,7 +8,7 @@ import {
   usePayPal,
 } from "@paypal/react-paypal-js/sdk-v6";
 import type { CaptureResponse, CreateOrderRequest } from "@/contracts";
-import { captureOrder, createOrder } from "@/lib/api-client";
+import { captureOrder, createOrder, errorCode } from "@/lib/api-client";
 
 type Props = {
   mode: "mock" | "sandbox";
@@ -17,7 +17,7 @@ type Props = {
   request: CreateOrderRequest | null;
   onPaid: (r: CaptureResponse) => void;
   /** orderId is set when the buyer approved but capture failed: retry capture on that order, never a new one. */
-  onFailed: (message: string, orderId?: string) => void;
+  onFailed: (message: string, orderId?: string, code?: string | null) => void;
 };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : "Payment failed");
@@ -35,7 +35,7 @@ export function PayButton({ mode, clientId, request, onPaid, onFailed }: Props) 
         orderId = (await createOrder(request)).paypalOrderId;
         onPaid(await captureOrder(orderId));
       } catch (e) {
-        onFailed(message(e), orderId);
+        onFailed(message(e), orderId, errorCode(e));
       } finally {
         setBusy(false);
       }
@@ -102,7 +102,7 @@ function SandboxButton({ request, onPaid, onFailed }: Pick<Props, "request" | "o
           }
         }}
         onCancel={() => setCancelled(true)}
-        onError={(e) => onFailed(message(e))}
+        onError={(e) => onFailed(message(e), undefined, errorCode(e))}
       />
       {cancelled && <p className="mt-1 text-center text-xs text-zinc-500">Payment cancelled. Your cart is still here.</p>}
     </>
