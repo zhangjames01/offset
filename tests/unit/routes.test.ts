@@ -20,6 +20,9 @@ vi.mock("@/lib/db", () => ({
     classificationApproval: {
       findUnique: vi.fn().mockResolvedValue(null),
     },
+    order: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
   }),
 }));
 
@@ -284,13 +287,13 @@ describe("real mode behavior", () => {
     );
   });
 
-  test("PAYPAL_MODE=sandbox capture remains unimplemented until J4", async () => {
+  test("PAYPAL_MODE=sandbox capture returns NOT_FOUND for an unknown order", async () => {
     vi.stubEnv("PAYPAL_MODE", "sandbox");
 
     await expectError(
       await capture(post({ paypalOrderId: "X" })),
-      501,
-      "NOT_IMPLEMENTED",
+      404,
+      "NOT_FOUND",
     );
   });
 });
