@@ -15,6 +15,14 @@ import { resetStore } from "@/lib/mock-store";
 // connection() needs a Next request scope; in unit tests it's a no-op.
 vi.mock("next/server", () => ({ connection: async () => {} }));
 
+vi.mock("@/lib/db", () => ({
+  getPrisma: () => ({
+    classificationApproval: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
+  }),
+}));
+
 import { GET as getCatalog } from "@/app/api/catalog/route";
 import { POST as classify } from "@/app/api/classify/route";
 import { GET as getPrefs, PUT as putPrefs } from "@/app/api/preferences/route";
@@ -37,13 +45,26 @@ const flightCart = {
   currency: "USD",
   userId: "demo-user",
   subtotalCents: 24900,
-  items: [{ productId: "flight-jfk-lax", name: "JFK → LAX", description: "flight", unitPriceCents: 24900, quantity: 1 }],
+  items: [
+    {
+      productId: "flight-jfk-lax",
+      name: "JFK → LAX",
+      description: "flight",
+      unitPriceCents: 24900,
+      quantity: 1,
+    },
+  ],
 };
 
 const order = (donationCents: number, userAction = "accepted") => ({
   cartId: "cart_t1",
   items: [{ productId: "flight-jfk-lax", quantity: 1 }],
-  donation: { classificationId: "cls_mock_01", donationCents, causeId: "carbon_removal", userAction },
+  donation: {
+    classificationId: "cls_mock_01",
+    donationCents,
+    causeId: "carbon_removal",
+    userAction,
+  },
 });
 
 async function expectError(res: Response, status: number, code: string) {
@@ -53,9 +74,12 @@ async function expectError(res: Response, status: number, code: string) {
 }
 
 beforeEach(() => {
-  resetStore();
   vi.unstubAllEnvs();
+  vi.stubEnv("LLM_MODE", "mock");
+  vi.stubEnv("PAYPAL_MODE", "mock");
+  resetStore();
 });
+
 afterEach(() => vi.unstubAllEnvs());
 
 describe("mock mode routes", () => {
@@ -67,77 +91,134 @@ describe("mock mode routes", () => {
   test("POST /api/classify returns the canned response for the priciest item", async () => {
     const res = await classify(post(flightCart));
     const body = ClassifyResponse.parse(await res.json());
-    expect(body).toMatchObject({ category: "air_travel", donationCents: 500, adjustment: "per_order_max" });
+    expect(body).toMatchObject({
+      category: "air_travel",
+      donationCents: 500,
+      adjustment: "per_order_max",
+    });
   });
 
   test("POST /api/classify rejects a bad body with VALIDATION_ERROR", async () => {
-    await expectError(await classify(post({ cartId: 1 })), 400, "VALIDATION_ERROR");
-    await expectError(await classify(post("not json")), 400, "VALIDATION_ERROR");
+    await expectError(
+      await classify(post({ cartId: 1 })),
+      400,
+      "VALIDATION_ERROR",
+    );
+    await expectError(
+      await classify(post("not json")),
+      400,
+      "VALIDATION_ERROR",
+    );
   });
 
   test("checkout → capture → ledger → payout flow", async () => {
-    const created = CreateOrderResponse.parse(await (await createOrder(post(order(500)))).json());
+    const created = CreateOrderResponse.parse(
+      await (await createOrder(post(order(500)))).json(),
+    );
 
-    const cap1 = CaptureResponse.parse(await (await capture(post({ paypalOrderId: created.paypalOrderId }))).json());
+    const cap1 = CaptureResponse.parse(
+      await (
+        await capture(post({ paypalOrderId: created.paypalOrderId }))
+      ).json(),
+    );
     expect(cap1.ledgerEntryId).not.toBeNull();
 
     // Idempotent: same result, no second ledger row.
-    const cap2 = CaptureResponse.parse(await (await capture(post({ paypalOrderId: created.paypalOrderId }))).json());
+    const cap2 = CaptureResponse.parse(
+      await (
+        await capture(post({ paypalOrderId: created.paypalOrderId }))
+      ).json(),
+    );
     expect(cap2).toEqual(cap1);
 
     const ledger = LedgerResponse.parse(await (await getLedger()).json());
-    expect(ledger.entries.filter((e) => e.id === cap1.ledgerEntryId)).toHaveLength(1);
+    expect(
+      ledger.entries.filter((e) => e.id === cap1.ledgerEntryId),
+    ).toHaveLength(1);
     const carbon = ledger.balances.find((b) => b.causeId === "carbon_removal")!;
     expect(carbon.pendingCents).toBe(1000); // 500 seeded mock + 500 new
 
     const batch = PayoutBatch.parse(
-      await (await runPayouts(post({ dryRun: false }, { "x-admin-token": "dev-admin" }))).json(),
+      await (
+        await runPayouts(
+          post({ dryRun: false }, { "x-admin-token": "dev-admin" }),
+        )
+      ).json(),
     );
     expect(batch.mode).toBe("simulated");
     expect(batch.status).toBe("SIMULATED");
     expect(batch.items.map((i) => i.causeId)).toEqual(["carbon_removal"]);
 
     const after = LedgerResponse.parse(await (await getLedger()).json());
-    expect(after.balances.find((b) => b.causeId === "carbon_removal")).toMatchObject({
+    expect(
+      after.balances.find((b) => b.causeId === "carbon_removal"),
+    ).toMatchObject({
       pendingCents: 0,
       paidOutCents: 1000,
     });
   });
 
   test("removed donation writes no ledger row", async () => {
-    const created = CreateOrderResponse.parse(await (await createOrder(post(order(500, "removed")))).json());
-    const cap = CaptureResponse.parse(await (await capture(post({ paypalOrderId: created.paypalOrderId }))).json());
+    const created = CreateOrderResponse.parse(
+      await (await createOrder(post(order(500, "removed")))).json(),
+    );
+    const cap = CaptureResponse.parse(
+      await (
+        await capture(post({ paypalOrderId: created.paypalOrderId }))
+      ).json(),
+    );
     expect(cap.ledgerEntryId).toBeNull();
   });
 
   test("create-order rejects donations over the per-order max and unknown products", async () => {
-    await expectError(await createOrder(post(order(900, "edited"))), 400, "VALIDATION_ERROR");
+    await expectError(
+      await createOrder(post(order(900, "edited"))),
+      400,
+      "VALIDATION_ERROR",
+    );
     const bad = { ...order(100), items: [{ productId: "nope", quantity: 1 }] };
     await expectError(await createOrder(post(bad)), 400, "VALIDATION_ERROR");
   });
 
   test("capture of an unknown order is NOT_FOUND", async () => {
-    await expectError(await capture(post({ paypalOrderId: "NOPE" })), 404, "NOT_FOUND");
+    await expectError(
+      await capture(post({ paypalOrderId: "NOPE" })),
+      404,
+      "NOT_FOUND",
+    );
   });
 
   test("payouts/run requires the admin token", async () => {
     await expectError(await runPayouts(post({})), 401, "UNAUTHORIZED");
     vi.stubEnv("ADMIN_TOKEN", "s3cret");
-    await expectError(await runPayouts(post({}, { "x-admin-token": "dev-admin" })), 401, "UNAUTHORIZED");
-    expect((await runPayouts(post({ dryRun: true }, { "x-admin-token": "s3cret" }))).status).toBe(200);
+    await expectError(
+      await runPayouts(post({}, { "x-admin-token": "dev-admin" })),
+      401,
+      "UNAUTHORIZED",
+    );
+    expect(
+      (await runPayouts(post({ dryRun: true }, { "x-admin-token": "s3cret" })))
+        .status,
+    ).toBe(200);
   });
 
   test("sandbox payout batch settles on refresh via GET /api/payouts/:id", async () => {
     vi.stubEnv("PAYOUT_MODE", "sandbox");
     const batch = PayoutBatch.parse(
-      await (await runPayouts(post({}, { "x-admin-token": "dev-admin" }))).json(),
+      await (
+        await runPayouts(post({}, { "x-admin-token": "dev-admin" }))
+      ).json(),
     );
     expect(batch.status).toBe("PENDING");
     const ctx = { params: Promise.resolve({ id: batch.id }) };
-    const refreshed = PayoutBatch.parse(await (await getPayout(new Request("http://test"), ctx)).json());
+    const refreshed = PayoutBatch.parse(
+      await (await getPayout(new Request("http://test"), ctx)).json(),
+    );
     expect(refreshed.status).toBe("SUCCESS");
     await expectError(
-      await getPayout(new Request("http://test"), { params: Promise.resolve({ id: "nope" }) }),
+      await getPayout(new Request("http://test"), {
+        params: Promise.resolve({ id: "nope" }),
+      }),
       404,
       "NOT_FOUND",
     );
@@ -150,20 +231,66 @@ describe("mock mode routes", () => {
     const put = new Request("http://test/api/preferences", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...before, userId: undefined, updatedAt: undefined, perOrderMaxCents: 300 }),
+      body: JSON.stringify({
+        ...before,
+        userId: undefined,
+        updatedAt: undefined,
+        perOrderMaxCents: 300,
+      }),
     });
-    expect(Preferences.parse(await (await putPrefs(put)).json()).perOrderMaxCents).toBe(300);
-    expect(Preferences.parse(await (await getPrefs()).json()).perOrderMaxCents).toBe(300);
+    expect(
+      Preferences.parse(await (await putPrefs(put)).json()).perOrderMaxCents,
+    ).toBe(300);
+    expect(
+      Preferences.parse(await (await getPrefs()).json()).perOrderMaxCents,
+    ).toBe(300);
 
-    const parsed = Preferences.parse(await (await parsePrefs(post({ rawText: "climate" }))).json());
+    const parsed = Preferences.parse(
+      await (await parsePrefs(post({ rawText: "climate" }))).json(),
+    );
     expect(parsed.rawText).toBe("climate");
   });
 });
 
-describe("real modes that aren't built yet return 501", () => {
-  test("PAYPAL_MODE=sandbox", async () => {
+describe("real mode behavior", () => {
+  test("LLM_MODE=live parses preferences and LLM_MODE=rules classifies", async () => {
+    vi.stubEnv("LLM_MODE", "live");
+
+    const parsedResponse = await parsePrefs(post({ rawText: "climate" }));
+
+    expect(parsedResponse.status).toBe(200);
+
+    const parsed = Preferences.parse(await parsedResponse.json());
+    expect(parsed.rawText).toBe("climate");
+
+    vi.stubEnv("LLM_MODE", "rules");
+
+    const response = await classify(post(flightCart));
+
+    expect(response.status).toBe(200);
+
+    const result = ClassifyResponse.parse(await response.json());
+
+    expect(result.category).toBe("air_travel");
+  });
+
+  test("PAYPAL_MODE=sandbox rejects unknown classifications", async () => {
     vi.stubEnv("PAYPAL_MODE", "sandbox");
-    await expectError(await createOrder(post(order(100))), 501, "NOT_IMPLEMENTED");
-    await expectError(await capture(post({ paypalOrderId: "X" })), 501, "NOT_IMPLEMENTED");
+
+    await expectError(
+      await createOrder(post(order(100))),
+      400,
+      "VALIDATION_ERROR",
+    );
+  });
+
+  test("PAYPAL_MODE=sandbox capture remains unimplemented until J4", async () => {
+    vi.stubEnv("PAYPAL_MODE", "sandbox");
+
+    await expectError(
+      await capture(post({ paypalOrderId: "X" })),
+      501,
+      "NOT_IMPLEMENTED",
+    );
   });
 });

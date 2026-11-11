@@ -8,31 +8,40 @@
  *   "llm"    live call; the result is cached
  *   "rules"  keyword classifier: LLM_MODE=rules, any LlmError, or LLM budget spent
  */
+import { getPrisma } from "@/lib/db";
+import { hashCart } from "@/lib/checkout/cart-hash";
 import {
   ClassifyResponse,
+  Preferences,
   type ClassificationSource,
   type ClassifyRequest,
   type LlmClassification,
-  type Preferences,
 } from "@/contracts";
 import { mockCatalog, mockCauses } from "@/lib/mocks";
-import { nextId, store } from "@/lib/mock-store";
+import { store } from "@/lib/mock-store";
 import { slidingWindowLimiter, type RateLimiter } from "@/lib/rate-limit";
 import { type ClassificationCache, cartKey, memoryCache } from "./cache";
 import { LlmError, anthropicClassifier, type LlmClassifier } from "./llm";
 import { price } from "./pricing";
 import { rulesClassify } from "./rules";
+import { randomUUID } from "node:crypto";
 
 export { LlmError, type LlmErrorKind } from "./llm";
 
 export type ClassifyStore = {
-  /** Authoritative unit price for a catalog product; undefined if the product is unknown. */
   getUnitPriceCents(productId: string): Promise<number | undefined>;
   getPreferences(userId: string): Promise<Preferences>;
-  /** Sum of the user's ledger entries in the current UTC calendar month. */
   getMonthToDateCents(userId: string, now: Date): Promise<number>;
   newClassificationId(): string;
-  save(result: ClassifyResponse): Promise<void>;
+
+  save(
+    result: ClassifyResponse,
+    context: {
+      userId: string;
+      cartId: string;
+      cartHash: string;
+    },
+  ): Promise<void>;
 };
 
 export type ClassifyDeps = {
@@ -72,8 +81,19 @@ export async function classify(cart: ClassifyRequest, deps: ClassifyDeps): Promi
     reason: label.reason,
     source: label.source,
   });
-  await deps.store.save(result);
-  return result;
+await deps.store.save(result, {
+  userId: cart.userId,
+  cartId: cart.cartId,
+  cartHash: hashCart(
+    items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      priceCents: item.unitPriceCents,
+    })),
+  ),
+});
+
+return result;
 }
 
 type Label = LlmClassification & { source: ClassificationSource };
@@ -115,8 +135,62 @@ export const mockClassifyStore: ClassifyStore = {
       .ledger.filter((e) => e.userId === userId && e.createdAt.startsWith(month))
       .reduce((s, e) => s + e.amountCents, 0);
   },
-  newClassificationId: () => nextId("cls_"),
+  newClassificationId: () => `cls_${randomUUID()}`,
   save: async (r) => void store().classifications.set(r.classificationId, r),
+};
+
+export const prismaClassifyStore: ClassifyStore = {
+  getUnitPriceCents: async (productId) =>
+    catalogPrice.get(productId),
+
+  getPreferences: async (userId) => {
+    const saved = await getPrisma().preferences.findUnique({
+      where: { userId },
+    });
+
+    if (!saved) {
+      throw new Error("Demo preferences not seeded in Neon");
+    }
+
+    return Preferences.parse({
+      ...saved,
+      updatedAt: saved.updatedAt.toISOString(),
+    });
+  },
+
+  getMonthToDateCents: async (userId, now) => {
+    const monthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+
+    const giving = await getPrisma().ledgerEntry.aggregate({
+      where: {
+        userId,
+        createdAt: { gte: monthStart },
+      },
+      _sum: { amountCents: true },
+    });
+
+    return giving._sum.amountCents ?? 0;
+  },
+
+  newClassificationId: () => `cls_${randomUUID()}`,
+
+  save: async (result, context) => {
+    await getPrisma().classificationApproval.create({
+      data: {
+        id: result.classificationId,
+        userId: context.userId,
+        cartId: context.cartId,
+        cartHash: context.cartHash,
+        category: result.category,
+        causeId: result.causeId,
+        suggestedDonationCents: result.suggestedDonationCents,
+        donationCents: result.donationCents,
+        source: result.source,
+      },
+    });
+  },
 };
 
 // ---------- live guardrails (A3) ----------
@@ -158,7 +232,10 @@ export function liveDeps(ip: string): ClassifyDeps {
   const { cache, perIp, global } = guards();
   return {
     llm: liveLlm,
-    store: mockClassifyStore,
+    store:
+      process.env.PAYPAL_MODE === "sandbox"
+        ? prismaClassifyStore
+        : mockClassifyStore,
     cache,
     allowLlm: () => perIp.take(ip) && global.take("all"),
   };
@@ -166,5 +243,10 @@ export function liveDeps(ip: string): ClassifyDeps {
 
 /** LLM_MODE=rules: keyword classifier only, no network. */
 export function rulesDeps(): ClassifyDeps {
-  return { store: mockClassifyStore };
+  return {
+    store:
+      process.env.PAYPAL_MODE === "sandbox"
+        ? prismaClassifyStore
+        : mockClassifyStore,
+  };
 }
