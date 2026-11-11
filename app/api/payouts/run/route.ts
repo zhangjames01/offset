@@ -4,7 +4,6 @@ import type { PayoutItem } from "@/contracts";
 import {
   handle,
   modes,
-  notImplemented,
   ok,
   parseBody,
   payoutThresholdCents,

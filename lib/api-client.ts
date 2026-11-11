@@ -32,9 +32,21 @@ export async function postJson<T>(url: string, body: unknown, schema: Schema<T>,
   return readJson(res, schema);
 }
 
-export async function getJson<T>(url: string, schema: Schema<T>): Promise<T> {
-  return readJson(await fetch(url, { cache: "no-store" }), schema);
+
+export async function getJson<T>(
+  url: string,
+  schema: Schema<T>,
+  headers: Record<string, string> = {}
+): Promise<T> {
+  return readJson(
+    await fetch(url, {
+      cache: "no-store",
+      headers,
+    }),
+    schema
+  );
 }
+
 
 async function readJson<T>(res: Response, schema: Schema<T>): Promise<T> {
   const json: unknown = await res.json().catch(() => null);
