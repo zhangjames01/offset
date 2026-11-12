@@ -7,7 +7,8 @@ import { RATES } from "@/lib/classifier/rates";
 import { mockCatalog, mockClassifyByProduct, mockPreferences } from "@/lib/mocks";
 
 const MTD = 650; // demo-user's Nov entries in mocks/ledger.json (50 + 100 + 500)
-const prefs = mockPreferences;
+// The cap tests below were written for a $15/month user; the demo user (A7) has $100/month.
+const prefs = { ...mockPreferences, monthlyCapCents: 1500 };
 const input = (o: Partial<PricingInput>): PricingInput => ({
   category: "general",
   confidence: 0.9,

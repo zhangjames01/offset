@@ -2,8 +2,8 @@ import { PrismaClient } from "../lib/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import catalog from "../mocks/catalog.json";
 import causes from "../mocks/causes.json";
-import preferences from "../mocks/preferences.json";
-import { CatalogResponse, CauseRegistry, Preferences } from "../contracts";
+import { CatalogResponse, CauseRegistry } from "../contracts";
+import { upsertDemoPreferences } from "./demo-user";
 import { loadEnvFile } from "node:process";
 
 try {
@@ -18,8 +18,6 @@ async function main() {
   try {
     const products = CatalogResponse.parse(catalog).products;
     const verifiedCauses = CauseRegistry.parse(causes);
-    const prefs = Preferences.parse(preferences);
-    await prisma.user.upsert({ where: { id: prefs.userId }, create: { id: prefs.userId }, update: {} });
     for (const p of products) {
       await prisma.product.upsert({ where: { id: p.id }, create: p, update: p });
     }
@@ -28,8 +26,7 @@ async function main() {
       const data = { ...c, receiver };
       await prisma.cause.upsert({ where: { id: c.id }, create: data, update: data });
     }
-    const { updatedAt, ...data } = prefs;
-    await prisma.preferences.upsert({ where: { userId: prefs.userId }, create: { ...data, updatedAt: new Date(updatedAt) }, update: { ...data, updatedAt: new Date(updatedAt) } });
+    await upsertDemoPreferences(prisma);
     console.log(`Seeded ${products.length} products, ${verifiedCauses.length} causes and demo preferences`);
   } finally {
     await prisma.$disconnect();

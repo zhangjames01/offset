@@ -19,6 +19,13 @@ describe("mocks/", () => {
     expect(mockCauses).toHaveLength(5);
   });
 
+  test("every cause is a placeholder partner with a PLACEHOLDER impact note (no unsourced figures)", () => {
+    for (const c of mockCauses) {
+      expect(c.name, c.id).toMatch(/\(placeholder partner\)$/);
+      expect(c.impactNote, c.id).toMatch(/^PLACEHOLDER\b/);
+    }
+  });
+
   test("every catalog product has a canned classify response", () => {
     for (const p of mockCatalog.products) {
       expect(mockClassifyByProduct[p.id], p.id).toBeDefined();
