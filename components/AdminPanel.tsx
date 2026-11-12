@@ -7,6 +7,7 @@ import { getJson, postJson } from "@/lib/api-client";
 import { formatCents } from "@/lib/cart";
 import { batchTotalCents, canRefresh, shortName, type CauseInfo } from "@/lib/impact";
 import { CauseBalances } from "./CauseBalances";
+import { LoadError } from "./LoadError";
 
 const PayoutHistory = z.array(PayoutBatch);
 type Props = { causes: CauseInfo[]; payoutMode: "sandbox" | "simulated"; devToken: string };
@@ -21,12 +22,11 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
 
   const reload = useCallback(() => {
-    getJson("/api/ledger", LedgerResponse).then(
-      setLedger,
-      (e: unknown) => setError(errMsg(e)),
-    );
+    setLedgerError(null);
+    getJson("/api/ledger", LedgerResponse).then(setLedger, (e: unknown) => setLedgerError(errMsg(e)));
   }, []);
 
   const reloadHistory = useCallback(async () => {
@@ -47,8 +47,8 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
   useEffect(() => {
     let cancelled = false;
     getJson("/api/ledger", LedgerResponse).then(
-      (l) => { if (!cancelled) setLedger(l); },
-      (e: unknown) => { if (!cancelled) setError(errMsg(e)); },
+      (l) => !cancelled && setLedger(l),
+      (e: unknown) => !cancelled && setLedgerError(errMsg(e)),
     );
     return () => { cancelled = true; };
   }, []);
@@ -135,7 +135,13 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
         <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
           <h2 className="mb-4 font-semibold">Pending balances</h2>
-          {ledger ? <CauseBalances balances={ledger.balances} causes={causes} /> : <p className="text-sm text-zinc-500">Loading…</p>}
+          {ledgerError ? (
+            <LoadError message="Couldn't load balances." detail={ledgerError} onRetry={reload} />
+          ) : ledger ? (
+            <CauseBalances balances={ledger.balances} causes={causes} />
+          ) : (
+            <p className="text-sm text-zinc-500">Loading…</p>
+          )}
         </section>
 
         <section className="h-fit rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">

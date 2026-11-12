@@ -48,6 +48,11 @@ describe("rulesClassify", () => {
     expect(one("Flight case", "Hard case for DJ gear").category).toBe("general");
     expect(one("Two flights to Denver").category).toBe("air_travel");
     expect(one("Trip", "SFO -> SEA, one way").category).toBe("air_travel");
+    // From review (#13): a sim described as "flight simulation", and reusable alternatives.
+    expect(one("Flight Simulator 2026", "Digital download of a flight simulation video game").category).toBe("general");
+    expect(one("Reusable water bottle", "Insulated, 32 oz; replaces single-use plastic").category).toBe("general");
+    expect(one("Refillable coffee pods", "Stainless steel, for K-Cup brewers").category).toBe("general");
+    expect(one("Coffee pods, 72 count", "Single-serve, for K-Cup brewers").category).toBe("single_use_packaging");
   });
 
   test("mixed cart: the category with the most dollars wins", () => {
