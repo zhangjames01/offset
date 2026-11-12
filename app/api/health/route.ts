@@ -1,11 +1,11 @@
+import { NextResponse } from "next/server";
+import { connection } from "next/server";
 
-import { handle, ok } from "@/lib/api";
-import { z } from "zod";
+export async function GET() {
+  await connection();
 
-const HealthResponse = z.object({
-  status: z.literal("ok"),
-});
-
-export const GET = handle(async () => {
-  return ok(HealthResponse, { status: "ok" });
-});
+  return NextResponse.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+  });
+}
