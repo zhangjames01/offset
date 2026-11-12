@@ -12,7 +12,7 @@ export function centsToUsd(cents: number): string {
   return `${dollars}.${remainder}`;
 }
 
-async function getAccessToken(): Promise<string> {
+export async function getAccessToken(): Promise<string> {
   const clientId = process.env.PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
 

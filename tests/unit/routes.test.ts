@@ -207,21 +207,40 @@ describe("mock mode routes", () => {
 
   test("sandbox payout batch settles on refresh via GET /api/payouts/:id", async () => {
     vi.stubEnv("PAYOUT_MODE", "sandbox");
+    vi.stubEnv("ADMIN_TOKEN", "s3cret");
     const batch = PayoutBatch.parse(
       await (
-        await runPayouts(post({}, { "x-admin-token": "dev-admin" }))
+        await runPayouts(post({}, { "x-admin-token": "s3cret" }))
       ).json(),
     );
     expect(batch.status).toBe("PENDING");
     const ctx = { params: Promise.resolve({ id: batch.id }) };
     const refreshed = PayoutBatch.parse(
-      await (await getPayout(new Request("http://test"), ctx)).json(),
+      await (
+        await getPayout(
+          new Request("http://test", {
+            headers: {
+              "x-admin-token": "s3cret",
+            },
+          }),
+          ctx,
+        )
+      ).json(),
     );
+
     expect(refreshed.status).toBe("SUCCESS");
+
     await expectError(
-      await getPayout(new Request("http://test"), {
-        params: Promise.resolve({ id: "nope" }),
-      }),
+      await getPayout(
+        new Request("http://test", {
+          headers: {
+            "x-admin-token": "s3cret",
+          },
+        }),
+        {
+          params: Promise.resolve({ id: "nope" }),
+        },
+      ),
       404,
       "NOT_FOUND",
     );
