@@ -170,13 +170,13 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
             <button
               type="button"
               onClick={() => run(true)}
-              disabled={busy !== null || !token}
+              disabled={busy !== null || !activeToken || token !== activeToken}
               className="flex-1 rounded-md border border-zinc-300 py-2 text-sm disabled:opacity-40 dark:border-zinc-700"
             >Preview</button>
             <button
               type="button"
               onClick={() => run(false)}
-              disabled={busy !== null || !token}
+              disabled={busy !== null || !activeToken || token !== activeToken}
               className="flex-1 rounded-md bg-zinc-900 py-2 text-sm text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
             >Run payout</button>
           </div>

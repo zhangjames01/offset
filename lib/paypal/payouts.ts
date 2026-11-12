@@ -124,13 +124,19 @@ export async function createSandboxPayout(
 
     // Only explicitly recognized request validation failures
     // are treated as definitive non-submissions.
-    if (
-      (response.status === 400 || response.status === 422) &&
-      (errorName === "INVALID_REQUEST" || errorName === "VALIDATION_ERROR")
-    ) {
+
+    const isDefinitiveRejection =
+      response.status === 401 ||
+      response.status === 403 ||
+      ((response.status === 400 || response.status === 422) &&
+        (errorName === "INVALID_REQUEST" || errorName === "VALIDATION_ERROR"));
+
+    if (isDefinitiveRejection) {
       throw new DefinitivePayoutRejection(message);
     }
 
+    // Network uncertainty, rate limits, and server errors
+    // must not automatically release claimed donations.
     throw new Error(message);
   }
 

@@ -26,7 +26,7 @@ export const PayoutItem = z.object({
   causeId: CauseId,
   receiver: z.string(),
   amountCents: Cents,
-  ledgerEntryIds: z.array(z.string().min(1)).min(1),
+  ledgerEntryIds: z.array(z.string().min(1)),
 });
 export type PayoutItem = z.infer<typeof PayoutItem>;
 
