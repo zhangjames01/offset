@@ -116,7 +116,10 @@ function SandboxButton({ request, onPaid, onFailed }: Pick<Props, "request" | "o
           if (createFailed.current) return; // our createOrder failed; the failure screen already shows why
           setCancelled(true);
         }}
-        onError={(e) => onFailed(message(e), undefined, errorCode(e))}
+        onError={(e) => {
+          if (createFailed.current) return; // already reported with the real message and code
+          onFailed(message(e), undefined, errorCode(e));
+        }}
       />
       {cancelled && <p className="mt-1 text-center text-xs text-zinc-500">Payment cancelled. Your cart is still here.</p>}
     </>
