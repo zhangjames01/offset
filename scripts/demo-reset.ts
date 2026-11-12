@@ -6,7 +6,7 @@
 // Uses DATABASE_URL (from .env.local or the environment). Run before a demo or judging.
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../lib/generated/prisma/client";
-import { countDemoRows, DEMO_USER_ID, resetDemoUser, type DemoRowCounts } from "../prisma/demo-user";
+import { countDemoRows, demoOrdersByStatus, DEMO_USER_ID, resetDemoUser, type DemoRowCounts } from "../prisma/demo-user";
 
 try {
   process.loadEnvFile(".env.local");
@@ -26,6 +26,10 @@ async function main() {
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
   try {
     console.log(`Database: ${new URL(url).host}\nUser: ${DEMO_USER_ID}`);
+    const byStatus = Object.entries(await demoOrdersByStatus(prisma));
+    console.log(`Orders by status: ${byStatus.length ? byStatus.map(([s, n]) => `${s} ${n}`).join(" · ") : "none"}`);
+    const capturing = Object.fromEntries(byStatus).CAPTURING ?? 0;
+    if (capturing > 0) console.log(`Warning: ${capturing} order(s) are CAPTURING (checkout in progress); --yes will refuse until they finish.`);
     if (!yes) {
       console.log(`Would delete:\n${show(await countDemoRows(prisma))}\nNothing changed. Re-run with -- --yes to reset.`);
       return;

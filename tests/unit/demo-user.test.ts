@@ -1,11 +1,19 @@
 // Seeded demo user + demo reset (A7), against a fake Prisma client that records every call.
 import { describe, expect, test } from "vitest";
-import { countDemoRows, demoPreferences, DEMO_USER_ID, resetDemoUser, upsertDemoPreferences } from "@/prisma/demo-user";
+import {
+  CheckoutInProgressError,
+  countDemoRows,
+  demoOrdersByStatus,
+  demoPreferences,
+  DEMO_USER_ID,
+  resetDemoUser,
+  upsertDemoPreferences,
+} from "@/prisma/demo-user";
 import { price } from "@/lib/classifier/pricing";
 
 type Call = { model: string; op: string; args: unknown };
 
-function fakeDb(opts: { linkedBatchIds?: string[]; demoOnlyBatchIds?: string[] } = {}) {
+function fakeDb(opts: { linkedBatchIds?: string[]; demoOnlyBatchIds?: string[]; orderStatuses?: string[] } = {}) {
   const calls: Call[] = [];
   const model = (name: string, results: Record<string, (args: unknown) => unknown> = {}) =>
     new Proxy(
@@ -28,7 +36,13 @@ function fakeDb(opts: { linkedBatchIds?: string[]; demoOnlyBatchIds?: string[] }
     }),
     payoutBatch: model("payoutBatch", { findMany: () => (opts.demoOnlyBatchIds ?? []).map((id) => ({ id })) }),
     payoutBatchItem: model("payoutBatchItem"),
-    order: model("order"),
+    order: model("order", {
+      findMany: () => (opts.orderStatuses ?? []).map((status) => ({ status })),
+      count: (args) => {
+        const where = (args as { where: { status?: string } }).where;
+        return where.status ? (opts.orderStatuses ?? []).filter((s) => s === where.status).length : 2;
+      },
+    }),
     checkoutAttempt: model("checkoutAttempt"),
     classificationApproval: model("classificationApproval"),
   };
@@ -91,6 +105,23 @@ describe("demo reset", () => {
     // A batch that also holds another user's entries is kept.
     expect(w[1].args).toEqual({ where: { payoutBatchId: { in: ["pb_1"] } } });
     expect(w[2].args).toEqual({ where: { id: { in: ["pb_1"] } } });
+  });
+
+  test("refuses while a checkout is CAPTURING, before deleting anything", async () => {
+    const { db, calls } = fakeDb({ orderStatuses: ["COMPLETED", "CAPTURING"] });
+    await expect(resetDemoUser(db)).rejects.toBeInstanceOf(CheckoutInProgressError);
+    expect(writes(calls)).toEqual([]);
+  });
+
+  test("unpaid (CREATED) orders don't block the reset", async () => {
+    const { db, calls } = fakeDb({ orderStatuses: ["COMPLETED", "CREATED"] });
+    await resetDemoUser(db);
+    expect(writes(calls).some((c) => c.model === "order" && c.op === "deleteMany")).toBe(true);
+  });
+
+  test("demoOrdersByStatus tallies demo-user orders", async () => {
+    const { db } = fakeDb({ orderStatuses: ["COMPLETED", "COMPLETED", "CREATED"] });
+    expect(await demoOrdersByStatus(db)).toEqual({ COMPLETED: 2, CREATED: 1 });
   });
 
   test("with no payout batches, the batch deletes match nothing", async () => {

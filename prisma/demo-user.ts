@@ -17,6 +17,14 @@ export type DemoRowCounts = {
   classificationApprovals: number;
 };
 
+/** Orders still being charged at PayPal. Deleting one mid-capture would lose its ledger row. */
+export class CheckoutInProgressError extends Error {
+  constructor(count: number) {
+    super(`${count} demo-user order(s) are CAPTURING (a checkout is in progress). Wait for it to finish, then reset.`);
+    this.name = "CheckoutInProgressError";
+  }
+}
+
 type Db = Pick<
   PrismaClient,
   "user" | "preferences" | "ledgerEntry" | "payoutBatch" | "payoutBatchItem" | "order" | "checkoutAttempt" | "classificationApproval"
@@ -46,6 +54,14 @@ async function demoOnlyBatchIds(db: Db): Promise<string[]> {
   return own.map((b) => b.id);
 }
 
+/** Demo-user orders by status, e.g. { COMPLETED: 19, CREATED: 1 }. Read-only. */
+export async function demoOrdersByStatus(db: Db): Promise<Record<string, number>> {
+  const rows = await db.order.findMany({ where: { userId: DEMO_USER_ID }, select: { status: true } });
+  const byStatus: Record<string, number> = {};
+  for (const { status } of rows) byStatus[status] = (byStatus[status] ?? 0) + 1;
+  return byStatus;
+}
+
 /** What resetDemoUser() would delete. Read-only. */
 export async function countDemoRows(db: Db): Promise<DemoRowCounts> {
   const batchIds = await demoOnlyBatchIds(db);
@@ -63,11 +79,15 @@ export async function countDemoRows(db: Db): Promise<DemoRowCounts> {
 /**
  * Deletes the demo user's orders, ledger entries, checkout attempts, classifications and the
  * payout batches that only held its entries, then re-applies the demo preferences.
+ * Unpaid (CREATED) orders are deleted too: capture looks up our order row first, so an old
+ * PayPal popup approved later gets 404 and no money moves. Refuses while an order is CAPTURING.
  * Run inside one transaction (scripts/demo-reset.ts does).
  */
 export async function resetDemoUser(db: Db): Promise<DemoRowCounts> {
-  const batchIds = await demoOnlyBatchIds(db);
   const user = { userId: DEMO_USER_ID };
+  const capturing = await db.order.count({ where: { ...user, status: "CAPTURING" } });
+  if (capturing > 0) throw new CheckoutInProgressError(capturing);
+  const batchIds = await demoOnlyBatchIds(db);
   // Foreign keys: ledger entries point at orders and batches; batch items point at batches.
   const ledgerEntries = (await db.ledgerEntry.deleteMany({ where: user })).count;
   const payoutBatchItems = (await db.payoutBatchItem.deleteMany({ where: { payoutBatchId: { in: batchIds } } })).count;

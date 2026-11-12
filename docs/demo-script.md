@@ -12,7 +12,7 @@ Click-by-click script for the live demo and the Devpost video. It runs in about 
    - Run `npm run demo:reset` first. It's a dry run that lists what it would delete.
    - Then run `npm run demo:reset -- --yes`.
 
-   This clears demo-user's orders, ledger entries, payout batches and classifications, then re-applies the demo preferences, so this month's giving starts at $0. If you skip it, the cap can turn every card into $0.00.
+   This clears demo-user's orders, ledger entries, payout batches and classifications, then re-applies the demo preferences, so this month's giving starts at $0. If you skip it, the cap can turn every card into $0.00. The dry run lists orders by status. `--yes` refuses while an order is CAPTURING (a checkout in progress). Unpaid orders from closed PayPal pop-ups are deleted safely: a later capture of one gets 404 and charges nothing.
 2. **Wake Render.** Open the app and wait for the store to load. A free instance takes about a minute after 15 idle minutes.
 3. **Check Render env:**
    - `LLM_MODE=live`
