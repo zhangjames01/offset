@@ -1,3 +1,4 @@
+import { ApiFailure } from "@/lib/api";
 import { CauseId } from "@/contracts";
 import type { PayoutItem } from "@/contracts";
 import { randomUUID } from "node:crypto";
@@ -55,7 +56,11 @@ export async function claimPayoutBatch(
         }
 
         if (mode === "sandbox" && !cause.receiver.trim()) {
-          throw new Error(`Missing payout receiver for cause ${cause.id}`);
+          throw new ApiFailure(
+            "PAYOUT_FAILED",
+            `Missing payout receiver for cause ${cause.id}`,
+            422,
+          );
         }
 
         items.push({
