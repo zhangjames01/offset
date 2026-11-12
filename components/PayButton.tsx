@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   INSTANCE_LOADING_STATE,
   PayPalOneTimePaymentButton,
@@ -69,6 +69,9 @@ export function PayButton({ mode, clientId, request, onPaid, onFailed }: Props) 
 function SandboxButton({ request, onPaid, onFailed }: Pick<Props, "request" | "onPaid" | "onFailed">) {
   const { loadingStatus, error } = usePayPal();
   const [cancelled, setCancelled] = useState(false);
+  // The SDK reports a failed createOrder as a cancel (the popup closes), so remember that ours
+  // failed and ignore the cancel that follows.
+  const createFailed = useRef(false);
 
   // Without this, an SDK load failure (bad client ID, blocked script) looks like a dead button.
   if (loadingStatus === INSTANCE_LOADING_STATE.PENDING) {
@@ -91,8 +94,16 @@ function SandboxButton({ request, onPaid, onFailed }: Pick<Props, "request" | "o
         createOrder={async () => {
           if (!request) throw new Error("Donation not ready");
           setCancelled(false);
-          const { paypalOrderId } = await createOrder(request);
-          return { orderId: paypalOrderId };
+          createFailed.current = false;
+          try {
+            const { paypalOrderId } = await createOrder(request);
+            return { orderId: paypalOrderId };
+          } catch (e) {
+            // Show the real error (e.g. "Demo preferences are not configured") instead of "cancelled".
+            createFailed.current = true;
+            onFailed(message(e), undefined, errorCode(e));
+            throw e; // still reject, so the SDK closes the popup
+          }
         }}
         onApprove={async ({ orderId }) => {
           try {
@@ -101,8 +112,14 @@ function SandboxButton({ request, onPaid, onFailed }: Pick<Props, "request" | "o
             onFailed(message(e), orderId);
           }
         }}
-        onCancel={() => setCancelled(true)}
-        onError={(e) => onFailed(message(e), undefined, errorCode(e))}
+        onCancel={() => {
+          if (createFailed.current) return; // our createOrder failed; the failure screen already shows why
+          setCancelled(true);
+        }}
+        onError={(e) => {
+          if (createFailed.current) return; // already reported with the real message and code
+          onFailed(message(e), undefined, errorCode(e));
+        }}
       />
       {cancelled && <p className="mt-1 text-center text-xs text-zinc-500">Payment cancelled. Your cart is still here.</p>}
     </>
