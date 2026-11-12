@@ -12,7 +12,14 @@ export const PayoutMode = z.enum(["sandbox", "simulated"]);
 export type PayoutMode = z.infer<typeof PayoutMode>;
 
 /** Mirrors PayPal batch status, or SIMULATED. */
-export const PayoutStatus = z.enum(["PENDING", "PROCESSING", "SUCCESS", "DENIED", "SIMULATED"]);
+export const PayoutStatus = z.enum([
+  "PENDING",
+  "PROCESSING",
+  "SUCCESS",
+  "DENIED",
+  "CANCELED",
+  "SIMULATED",
+]);
 export type PayoutStatus = z.infer<typeof PayoutStatus>;
 
 export const PayoutItem = z.object({

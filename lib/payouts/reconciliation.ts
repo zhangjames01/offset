@@ -6,9 +6,7 @@ export async function reconcileSandboxPayout(batchId: string) {
 
   const batch = await prisma.payoutBatch.findUnique({
     where: { id: batchId },
-    include: {
-      items: true,
-    },
+    include: { items: true },
   });
 
   if (!batch) {
@@ -21,79 +19,73 @@ export async function reconcileSandboxPayout(batchId: string) {
 
   const result = await getSandboxPayout(batch.paypalPayoutBatchId);
 
-  // Match PayPal items using the stable sender_item_id
-  // generated when the payout was submitted.
-
-  const successfulCauseIds: string[] = [];
+  if (result.paypalPayoutBatchId !== batch.paypalPayoutBatchId) {
+    throw new Error("Unexpected PayPal payout batch ID");
+  }
 
   const paypalItems = result.items ?? [];
 
-  // Never treat a missing or incomplete PayPal item list
-  // as confirmation that all donations were paid.
   if (paypalItems.length !== batch.items.length) {
     throw new Error(
       `Incomplete PayPal payout items: expected ${batch.items.length}, received ${paypalItems.length}`,
     );
   }
 
+  const successfulCauseIds: string[] = [];
+  const failedCauseIds: string[] = [];
   const matchedCauseIds = new Set<string>();
-  const matchedSenderIds = new Set<string>();
 
   for (const paypalItem of paypalItems) {
-    // PayPal sender IDs use the original submission index.
-    if (!paypalItem.senderItemId.startsWith(`${batch.senderBatchId}-`)) {
-      throw new Error("Unexpected PayPal sender item ID");
-    }
-
-    const indexText = paypalItem.senderItemId.slice(
-      batch.senderBatchId.length + 1,
+    let item = batch.items.find(
+      (candidate) =>
+        paypalItem.senderItemId ===
+        `${batch.senderBatchId}-${candidate.causeId}`,
     );
 
-    if (!/^(0|[1-9]\d*)$/.test(indexText)) {
-      throw new Error("Invalid PayPal sender item index");
-    }
-
-    const index = Number(indexText);
-
+    // Compatibility with previously submitted single-item
+    // Sandbox batches that used an index-based sender ID.
     if (
-      !Number.isSafeInteger(index) ||
-      index >= batch.items.length ||
-      matchedSenderIds.has(paypalItem.senderItemId)
+      !item &&
+      batch.items.length === 1 &&
+      paypalItem.senderItemId === `${batch.senderBatchId}-0`
     ) {
-      throw new Error("Duplicate or invalid PayPal payout item");
+      item = batch.items[0];
     }
 
-    matchedSenderIds.add(paypalItem.senderItemId);
-
-    const matchingItems = batch.items.filter(
-      (item) => item.receiver === paypalItem.receiver,
-    );
-
-    if (matchingItems.length !== 1) {
+    if (!item) {
       throw new Error(
-        `Cannot uniquely match payout receiver: ${paypalItem.receiver}`,
+        `Unexpected PayPal sender item ID: ${paypalItem.senderItemId}`,
       );
     }
 
-    const item = matchingItems[0];
-
     if (matchedCauseIds.has(item.causeId)) {
-      throw new Error("Duplicate payout cause match");
+      throw new Error("Duplicate PayPal payout item");
+    }
+
+    if (paypalItem.receiver !== item.receiver) {
+      throw new Error(`PayPal payout receiver mismatch for ${item.causeId}`);
     }
 
     matchedCauseIds.add(item.causeId);
 
     if (paypalItem.status === "SUCCESS") {
       successfulCauseIds.push(item.causeId);
+    } else if (
+      paypalItem.status === "FAILED" ||
+      paypalItem.status === "RETURNED"
+    ) {
+      failedCauseIds.push(item.causeId);
     }
+  }
+
+  if (matchedCauseIds.size !== batch.items.length) {
+    throw new Error("Not all payout items were matched");
   }
 
   await prisma.$transaction(async (tx) => {
     await tx.payoutBatch.update({
       where: { id: batchId },
-      data: {
-        status: result.status,
-      },
+      data: { status: result.status },
     });
 
     for (const causeId of successfulCauseIds) {
@@ -103,8 +95,19 @@ export async function reconcileSandboxPayout(batchId: string) {
           causeId,
           status: "pending_payout",
         },
+        data: { status: "paid_out" },
+      });
+    }
+
+    for (const causeId of failedCauseIds) {
+      await tx.ledgerEntry.updateMany({
+        where: {
+          payoutBatchId: batchId,
+          causeId,
+          status: "pending_payout",
+        },
         data: {
-          status: "paid_out",
+          payoutBatchId: null,
         },
       });
     }

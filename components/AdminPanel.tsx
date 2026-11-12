@@ -14,6 +14,7 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Something went
 
 export function AdminPanel({ causes, payoutMode, devToken }: Props) {
   const [token, setToken] = useState(devToken);
+  const [activeToken, setActiveToken] = useState(devToken);
   const [ledger, setLedger] = useState<LedgerResponse | null>(null);
   const [batch, setBatch] = useState<{ b: PayoutBatch; dryRun: boolean } | null>(null);
   const [history, setHistory] = useState<PayoutBatch[]>([]);
@@ -29,17 +30,19 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
   }, []);
 
   const reloadHistory = useCallback(async () => {
-    if (!token) {
+    if (!activeToken) {
       setHistory([]);
       return;
     }
+
     const batches = await getJson(
       "/api/payouts",
       PayoutHistory,
-      { "x-admin-token": token },
+      { "x-admin-token": activeToken },
     );
+
     setHistory(batches);
-  }, [token]);
+  }, [activeToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,21 +54,36 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
   }, []);
 
   useEffect(() => {
-  if (!token) return;
+    if (!activeToken) {
+      return;
+    }
+
     let cancelled = false;
-    getJson("/api/payouts", PayoutHistory, { "x-admin-token": token }).then(
-      (batches) => { if (!cancelled) setHistory(batches); },
-      (e: unknown) => { if (!cancelled) setError(errMsg(e)); },
+
+    getJson(
+      "/api/payouts",
+      PayoutHistory,
+      { "x-admin-token": activeToken },
+    ).then(
+      (batches) => {
+        if (!cancelled) setHistory(batches);
+      },
+      (e: unknown) => {
+        if (!cancelled) setError(errMsg(e));
+      },
     );
-    return () => { cancelled = true; };
-  }, [token]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeToken]);
 
   async function run(dryRun: boolean) {
     if (!dryRun && !window.confirm("Run payout now? This will start the payout batch.")) return;
     setBusy(dryRun ? "Previewing…" : "Running payout…");
     setError(null);
     try {
-      const b = await postJson("/api/payouts/run", { dryRun }, PayoutBatch, { "x-admin-token": token });
+      const b = await postJson("/api/payouts/run", { dryRun }, PayoutBatch, { "x-admin-token": activeToken });
       setBatch({ b, dryRun });
       if (!dryRun) {
         setSelectedBatchId(b.id);
@@ -83,7 +101,12 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
     setBusy("Refreshing status…");
     setError(null);
     try {
-      const b = await getJson(`/api/payouts/${encodeURIComponent(id)}`, PayoutBatch);
+
+      const b = await getJson(
+        `/api/payouts/${encodeURIComponent(id)}`,
+        PayoutBatch,
+        { "x-admin-token": activeToken },
+      );
       setBatch({ b, dryRun: false });
       setSelectedBatchId(b.id);
       reload();
@@ -125,6 +148,18 @@ export function AdminPanel({ causes, payoutMode, devToken }: Props) {
             autoComplete="off"
             className="mt-1 w-full rounded border border-zinc-300 bg-transparent px-2 py-1 dark:border-zinc-700"
           />
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setHistory([]);
+              setActiveToken(token);
+            }}
+            disabled={!token || token === activeToken}
+            className="mt-2 rounded-md border border-zinc-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-zinc-700"
+          >
+            Apply token
+          </button>
           <div className="mt-4 flex gap-2">
             <button
               type="button"

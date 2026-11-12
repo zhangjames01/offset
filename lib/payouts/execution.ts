@@ -1,7 +1,9 @@
-
 import { getPrisma } from "@/lib/db";
-import { createSandboxPayout } from "@/lib/paypal/payouts";
-
+import {
+  createSandboxPayout,
+  DefinitivePayoutRejection,
+} from "@/lib/paypal/payouts";
+import { getAccessToken } from "@/lib/paypal/client";
 /**
  * Submits a previously claimed payout batch to PayPal.
  *
@@ -27,6 +29,10 @@ export async function executeSandboxPayout(batchId: string) {
   if (batch.paypalPayoutBatchId) {
     return batch;
   }
+
+  // Obtain credentials before claiming the batch.
+  // A token failure cannot strand donations in PROCESSING.
+  const accessToken = await getAccessToken();
 
   // Claim the submission before contacting PayPal.
   // This prevents ordinary duplicate requests from
@@ -54,6 +60,7 @@ export async function executeSandboxPayout(batchId: string) {
         receiver: item.receiver,
         amountCents: item.amountCents,
       })),
+      accessToken,
     );
 
     return await prisma.payoutBatch.update({
@@ -64,8 +71,37 @@ export async function executeSandboxPayout(batchId: string) {
       },
     });
   } catch (error) {
-    // Keep PROCESSING: PayPal might have accepted the payout.
-    // Do not automatically reset to PENDING or create another batch.
+    if (error instanceof DefinitivePayoutRejection) {
+      await prisma.$transaction(async (tx) => {
+        const released = await tx.payoutBatch.updateMany({
+          where: {
+            id: batchId,
+            status: "PROCESSING",
+            paypalPayoutBatchId: null,
+          },
+          data: {
+            status: "DENIED",
+          },
+        });
+
+        if (released.count !== 1) {
+          throw new Error("Payout state changed during rejection recovery");
+        }
+
+        await tx.ledgerEntry.updateMany({
+          where: {
+            payoutBatchId: batchId,
+            status: "pending_payout",
+          },
+          data: {
+            payoutBatchId: null,
+          },
+        });
+      });
+    }
+
+    // Ambiguous outcomes remain PROCESSING.
+    // Never release or automatically resubmit them.
     throw error;
   }
 }

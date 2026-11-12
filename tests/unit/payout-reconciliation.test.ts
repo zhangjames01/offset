@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { findBatch, updateBatch, updateLedger, getPayout, transaction } = vi.hoisted(() => ({
-  findBatch: vi.fn(),
-  updateBatch: vi.fn(),
-  updateLedger: vi.fn(),
-  getPayout: vi.fn(),
-  transaction: vi.fn(),
-}));
+const { findBatch, updateBatch, updateLedger, getPayout, transaction } =
+  vi.hoisted(() => ({
+    findBatch: vi.fn(),
+    updateBatch: vi.fn(),
+    updateLedger: vi.fn(),
+    getPayout: vi.fn(),
+    transaction: vi.fn(),
+  }));
 
 vi.mock("@/lib/db", () => ({
   getPrisma: () => ({
@@ -26,9 +27,7 @@ const batch = {
   mode: "sandbox",
   paypalPayoutBatchId: "PAYPAL_BATCH_1",
   senderBatchId: "offset-batch-1",
-  items: [
-    { causeId: "food_bank", receiver: "food@sandbox.example" },
-  ],
+  items: [{ causeId: "food_bank", receiver: "food@sandbox.example" }],
 };
 
 const paypalItem = (status: string) => ({
@@ -43,15 +42,57 @@ beforeEach(() => {
   findBatch.mockResolvedValue(batch);
   updateBatch.mockResolvedValue({});
   updateLedger.mockResolvedValue({ count: 1 });
-  transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
-    callback({
-      payoutBatch: { update: updateBatch },
-      ledgerEntry: { updateMany: updateLedger },
-    }),
+  transaction.mockImplementation(
+    async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        payoutBatch: { update: updateBatch },
+        ledgerEntry: { updateMany: updateLedger },
+      }),
   );
 });
 
 describe("Sandbox payout reconciliation (J7)", () => {
+  test("matches two causes sharing one receiver by sender item ID", async () => {
+    findBatch.mockResolvedValue({
+      ...batch,
+      items: [
+        { causeId: "food_bank", receiver: "shared@sandbox.example" },
+        { causeId: "ocean_plastic", receiver: "shared@sandbox.example" },
+      ],
+    });
+
+    getPayout.mockResolvedValue({
+      paypalPayoutBatchId: "PAYPAL_BATCH_1",
+      status: "PROCESSING",
+      items: [
+        {
+          senderItemId: "offset-batch-1-ocean_plastic",
+          payoutItemId: "PAYOUT_ITEM_2",
+          status: "PENDING",
+          receiver: "shared@sandbox.example",
+        },
+        {
+          senderItemId: "offset-batch-1-food_bank",
+          payoutItemId: "PAYOUT_ITEM_1",
+          status: "SUCCESS",
+          receiver: "shared@sandbox.example",
+        },
+      ],
+    });
+
+    await reconcileSandboxPayout("batch_1");
+
+    expect(updateLedger).toHaveBeenCalledTimes(1);
+    expect(updateLedger).toHaveBeenCalledWith({
+      where: {
+        payoutBatchId: "batch_1",
+        causeId: "food_bank",
+        status: "pending_payout",
+      },
+      data: { status: "paid_out" },
+    });
+  });
+
   test("marks only confirmed successful payout items as paid_out", async () => {
     getPayout.mockResolvedValue({
       paypalPayoutBatchId: "PAYPAL_BATCH_1",
@@ -90,7 +131,16 @@ describe("Sandbox payout reconciliation (J7)", () => {
       where: { id: "batch_1" },
       data: { status: "DENIED" },
     });
-    expect(updateLedger).not.toHaveBeenCalled();
+    expect(updateLedger).toHaveBeenCalledWith({
+      where: {
+        payoutBatchId: "batch_1",
+        causeId: "food_bank",
+        status: "pending_payout",
+      },
+      data: {
+        payoutBatchId: null,
+      },
+    });
   });
 
   test("rejects an incomplete item list before writing to the database", async () => {
@@ -119,6 +169,53 @@ describe("Sandbox payout reconciliation (J7)", () => {
       "Unexpected PayPal sender item ID",
     );
     expect(transaction).not.toHaveBeenCalled();
+    expect(updateLedger).not.toHaveBeenCalled();
+  });
+
+  test("releases confirmed failed payout items", async () => {
+    getPayout.mockResolvedValue({
+      paypalPayoutBatchId: "PAYPAL_BATCH_1",
+      status: "DENIED",
+      items: [
+        {
+          senderItemId: "offset-batch-1-food_bank",
+          payoutItemId: "PAYOUT_ITEM_1",
+          status: "FAILED",
+          receiver: "food@sandbox.example",
+        },
+      ],
+    });
+
+    await reconcileSandboxPayout("batch_1");
+
+    expect(updateLedger).toHaveBeenCalledWith({
+      where: {
+        payoutBatchId: "batch_1",
+        causeId: "food_bank",
+        status: "pending_payout",
+      },
+      data: {
+        payoutBatchId: null,
+      },
+    });
+  });
+
+  test("does not release unclaimed payout items", async () => {
+    getPayout.mockResolvedValue({
+      paypalPayoutBatchId: "PAYPAL_BATCH_1",
+      status: "PROCESSING",
+      items: [
+        {
+          senderItemId: "offset-batch-1-food_bank",
+          payoutItemId: "PAYOUT_ITEM_1",
+          status: "UNCLAIMED",
+          receiver: "food@sandbox.example",
+        },
+      ],
+    });
+
+    await reconcileSandboxPayout("batch_1");
+
     expect(updateLedger).not.toHaveBeenCalled();
   });
 });

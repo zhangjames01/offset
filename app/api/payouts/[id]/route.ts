@@ -1,12 +1,13 @@
 import { CauseId, PayoutBatch, PayoutStatus } from "@/contracts";
-import { ApiFailure, handle, modes, ok } from "@/lib/api";
+import { ApiFailure, handle, modes, ok, requireAdmin } from "@/lib/api";
 import { getPrisma } from "@/lib/db";
 import { mockPayoutBatch } from "@/lib/mocks";
 import { store } from "@/lib/mock-store";
 import { reconcileSandboxPayout } from "@/lib/payouts/reconciliation";
 
 export const GET = handle(
-  async (_req: Request, ctx: RouteContext<"/api/payouts/[id]">) => {
+  async (req: Request, ctx: RouteContext<"/api/payouts/[id]">) => {
+    requireAdmin(req);
     const { id } = await ctx.params;
 
     // Preserve existing mock behavior.

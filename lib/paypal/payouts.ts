@@ -2,6 +2,13 @@ import { centsToUsd, getAccessToken } from "./client";
 
 const PAYPAL_BASE_URL = "https://api-m.sandbox.paypal.com";
 
+export class DefinitivePayoutRejection extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DefinitivePayoutRejection";
+  }
+}
+
 export type SandboxPayoutItem = {
   causeId: string;
   receiver: string;
@@ -17,7 +24,7 @@ export type SandboxPayoutItemStatus = {
 
 export type SandboxPayoutResult = {
   paypalPayoutBatchId: string;
-  status: "PENDING" | "PROCESSING" | "SUCCESS" | "DENIED";
+  status: "PENDING" | "PROCESSING" | "SUCCESS" | "DENIED" | "CANCELED";
   items?: SandboxPayoutItemStatus[];
 };
 
@@ -45,6 +52,7 @@ type PayPalPayoutResponse = {
 export async function createSandboxPayout(
   senderBatchId: string,
   items: SandboxPayoutItem[],
+  providedAccessToken?: string,
 ): Promise<SandboxPayoutResult> {
   if (!senderBatchId.trim()) {
     throw new Error("Missing payout sender batch ID");
@@ -64,8 +72,7 @@ export async function createSandboxPayout(
     }
   }
 
-  const accessToken = await getAccessToken();
-
+  const accessToken = providedAccessToken ?? (await getAccessToken());
   const response = await fetch(`${PAYPAL_BASE_URL}/v1/payments/payouts`, {
     method: "POST",
     headers: {
@@ -79,14 +86,14 @@ export async function createSandboxPayout(
         email_subject: "You have received a payout from Offset",
         email_message: "Offset has sent you a donation payout.",
       },
-      items: items.map((item, index) => ({
+      items: items.map((item) => ({
         recipient_type: "EMAIL",
         receiver: item.receiver,
         amount: {
           value: centsToUsd(item.amountCents),
           currency: "USD",
         },
-        sender_item_id: `${senderBatchId}-${index}`,
+        sender_item_id: `${senderBatchId}-${item.causeId}`,
         note: `Offset donation payout for ${item.causeId}`,
       })),
     }),
@@ -95,9 +102,36 @@ export async function createSandboxPayout(
 
   if (!response.ok) {
     const details = await response.text();
-    throw new Error(
-      `PayPal payout failed: ${response.status} ${details.slice(0, 500)}`,
-    );
+
+    let errorName: string | undefined;
+
+    try {
+      const parsed: unknown = JSON.parse(details);
+
+      if (
+        parsed !== null &&
+        typeof parsed === "object" &&
+        "name" in parsed &&
+        typeof parsed.name === "string"
+      ) {
+        errorName = parsed.name;
+      }
+    } catch {
+      // Unrecognized responses remain ambiguous.
+    }
+
+    const message = `PayPal payout failed: ${response.status} ${details.slice(0, 500)}`;
+
+    // Only explicitly recognized request validation failures
+    // are treated as definitive non-submissions.
+    if (
+      (response.status === 400 || response.status === 422) &&
+      (errorName === "INVALID_REQUEST" || errorName === "VALIDATION_ERROR")
+    ) {
+      throw new DefinitivePayoutRejection(message);
+    }
+
+    throw new Error(message);
   }
 
   const data: PayPalPayoutResponse = await response.json();
@@ -109,7 +143,13 @@ export async function createSandboxPayout(
     throw new Error("PayPal returned no payout batch ID");
   }
 
-  const validStatuses = ["PENDING", "PROCESSING", "SUCCESS", "DENIED"] as const;
+  const validStatuses = [
+    "PENDING",
+    "PROCESSING",
+    "SUCCESS",
+    "DENIED",
+    "CANCELED",
+  ] as const;
 
   const status =
     rawStatus === "NEW"
@@ -163,7 +203,13 @@ export async function getSandboxPayout(
     throw new Error("PayPal returned no payout batch ID");
   }
 
-  const validStatuses = ["PENDING", "PROCESSING", "SUCCESS", "DENIED"] as const;
+  const validStatuses = [
+    "PENDING",
+    "PROCESSING",
+    "SUCCESS",
+    "DENIED",
+    "CANCELED",
+  ] as const;
 
   const status =
     rawStatus === "NEW"

@@ -31,7 +31,11 @@ export function batchTotalCents(b: PayoutBatch): number {
 
 /** Only a real (sandbox) batch that PayPal hasn't settled yet has a status worth refreshing. */
 export function canRefresh(b: PayoutBatch): boolean {
-  return b.mode === "sandbox" && (b.status === "PENDING" || b.status === "PROCESSING");
+  return (
+    b.mode === "sandbox" &&
+    Boolean(b.paypalPayoutBatchId) &&
+    (b.status === "PENDING" || b.status === "PROCESSING")
+  );
 }
 
 /** "Carbon removal (placeholder partner)" → "Carbon removal". The page labels placeholders separately. */
