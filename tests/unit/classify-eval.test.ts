@@ -121,5 +121,5 @@ describe("rules classifier on the eval carts (the fallback the demo shows withou
   });
 });
 
-/** Rules-mode accuracy on all 30 carts when A5 landed; raise it if rules.ts improves. */
-const RULES_FLOOR = 0.7;
+/** Rules-mode accuracy on all 30 carts is 25/30 (A5 + #13 review fixes); raise it if rules.ts improves. */
+const RULES_FLOOR = 0.8;
