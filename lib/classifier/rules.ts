@@ -17,9 +17,11 @@ type Rule = { category: Exclude<Category, "general">; label: string; test: (text
 const any = (...res: RegExp[]) => (text: string) => res.some((r) => r.test(text));
 
 const FOOD = /\b(ramen|pizza|sushi|burgers?|tacos?|burritos?|noodles|curry|meals?|bowls?|dinner|lunch|breakfast|food|groceries)\b/;
+/** Reusable alternatives often mention what they replace ("replaces single-use plastic"). */
+const REUSABLE = /\b(reusable|refillable)\b/;
 const DELIVERED = /\b(deliver(y|ed)?|courier)\b/;
-/** "flight", but not "flight simulator", "flight jacket", "flight case"… */
-const NOT_A_TRIP_FLIGHT = /\bflights?\b(?![ -]?(simulators?|sim|games?|jackets?|sticks?|controllers?|cases?|bags?|decks?|suits?)\b)/;
+/** "flight", but not "flight simulator", "flight simulation", "flight jacket", "flight case"… */
+const NOT_A_TRIP_FLIGHT = /\bflights?\b(?![ -]?(simulators?|simulations?|sim|games?|jackets?|sticks?|controllers?|cases?|bags?|decks?|suits?)\b)/;
 
 /** Order matters: it breaks ties and picks the rule per line. */
 export const RULES: Rule[] = [
@@ -49,15 +51,17 @@ export const RULES: Rule[] = [
   {
     category: "single_use_packaging",
     label: "single-use packaging",
-    test: any(
-      /\bindividually[- ]wrapped\b/,
-      /\bsingle[- ](use|serve|serving)\b/,
-      /\bdisposable\b/,
-      /\b(k-?cups?|coffee pods)\b/,
-      /\bbottled water\b/,
-      /\bplastic (cutlery|utensils|cups|straws|bags)\b/,
-      /\bmulti-?packs?\b/,
-    ),
+    test: (text) =>
+      !REUSABLE.test(text) &&
+      any(
+        /\bindividually[- ]wrapped\b/,
+        /\bsingle[- ](use|serve|serving)\b/,
+        /\bdisposable\b/,
+        /\b(k-?cups?|coffee pods)\b/,
+        /\bbottled water\b/,
+        /\bplastic (cutlery|utensils|cups|straws|bags)\b/,
+        /\bmulti-?packs?\b/,
+      )(text),
   },
 ];
 
